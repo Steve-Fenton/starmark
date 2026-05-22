@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Starmark</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top-bar">
+      <div class="top-bar-inner">
+        <h1 class="top-bar-title">Starmark</h1>
+        <button id="projects-menu-btn" type="button" class="top-bar-btn">
+          Projects
+        </button>
+      </div>
+    </header>
+
+    <dialog id="projects-dialog" class="projects-dialog">
+      <div class="dialog-header">
+        <h2>Projects</h2>
+        <button id="projects-dialog-close" type="button" class="dialog-close" aria-label="Close">
+          &times;
+        </button>
+      </div>
+
+      <section class="picker">
+        <label for="folder-path">Astro project folder</label>
+        <div class="picker-row">
+          <input
+            id="folder-path"
+            type="text"
+            placeholder="/path/to/your/astro-site"
+            spellcheck="false"
+          />
+          <button id="browse-btn" type="button">Browse…</button>
+          <button id="scan-btn" type="button" class="primary">Scan</button>
+        </div>
+        <p id="scan-info" class="scan-info" hidden></p>
+      </section>
+
+      <section id="projects-section" class="projects" hidden>
+        <h3 class="projects-heading">Remembered</h3>
+        <ul id="project-list" class="project-list"></ul>
+      </section>
+    </dialog>
+
+    <main class="container">
+      <section id="list-view" class="results">
+        <div class="results-header">
+          <h2>Content &amp; pages</h2>
+          <span id="file-count" class="file-count"></span>
+        </div>
+        <div id="search-box" class="search-box" hidden>
+          <input
+            id="file-search"
+            type="search"
+            placeholder="Filter files…"
+            spellcheck="false"
+            aria-label="Filter files"
+          />
+        </div>
+        <p id="empty-state" class="empty-state">
+          Open Projects to choose a folder and scan for <code>.md</code> and
+          <code>.mdx</code> files.
+        </p>
+        <ul id="file-list" class="file-list" hidden></ul>
+      </section>
+
+      <section id="edit-view" class="edit-view" hidden>
+        <div class="edit-header">
+          <button id="edit-back-btn" type="button" class="edit-back-btn" aria-label="Back to file list">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+              <path fill="currentColor" d="M10.5 3.5 5 8l5.5 4.5-.875 1.125L3.25 8l6.375-5.625z"/>
+            </svg>
+            Back
+          </button>
+          <div class="edit-file-info">
+            <h2 id="edit-file-name" class="edit-file-name"></h2>
+            <p id="edit-file-path" class="edit-file-path"></p>
+          </div>
+        </div>
+        <div
+          id="markdown-editor"
+          class="markdown-editor"
+          contenteditable="true"
+          spellcheck="false"
+          role="textbox"
+          aria-multiline="true"
+          aria-labelledby="edit-file-name"
+        ></div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
