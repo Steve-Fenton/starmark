@@ -2,7 +2,26 @@
   "name": "starmark",
   "version": "1.0.0",
   "description": "Browse and edit markdown content in local Astro sites",
+  "keywords": [
+    "cms",
+    "astro",
+    "editor",
+    "markdown"
+  ],
+  "homepage": "https://github.com/Steve-Fenton/starmark#readme",
+  "bugs": {
+    "url": "https://github.com/Steve-Fenton/starmark/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Steve-Fenton/starmark.git"
+  },
+  "license": "CC-BY-NC-ND-4.0",
+  "author": "Steve Fenton",
   "type": "module",
+  "exports": {
+    ".": "./src/server.js"
+  },
   "bin": {
     "starmark": "./bin/starmark.js"
   },
