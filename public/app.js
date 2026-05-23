@@ -49,6 +49,9 @@ const EDIT_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="
 const HEADING_LINE_RE = /^(#{1,6})\s+(.*)$/;
 const CODE_FENCE_RE = /^```/;
 const CODE_FENCE_CLOSE_RE = /^```\s*$/;
+const BLOCKQUOTE_LINE_RE = /^\s*>/;
+const UNORDERED_LIST_LINE_RE = /^\s*[-*+]\s/;
+const ORDERED_LIST_LINE_RE = /^\s*\d+\.\s/;
 const COLON_BLOCK_OPEN_RE = /^(:{3,})/;
 const COLON_INLINE_DOUBLE_RE = /^::(?!\:)/;
 const COLON_INLINE_SINGLE_RE = /^:(?!\:)/;
@@ -56,6 +59,8 @@ const EDITOR_LINE_SELECTOR = "p, h1, h2, h3, h4, h5, h6";
 const COLON_DEPTH_CLASSES = Array.from({ length: 6 }, (_, index) => `colon-depth-${index + 1}`);
 const LINE_DECORATION_CLASSES = [
   "is-code-block",
+  "is-blockquote",
+  "is-list",
   "is-colon-block-start",
   "is-colon-block-end",
   "is-colon-inline",
@@ -192,12 +197,21 @@ function getEditorLineStates(lines) {
   const codeBlockStates = getCodeBlockStates(lines);
   const colonStates = getColonLineStates(lines, codeBlockStates);
 
-  return lines.map((_, index) => ({
-    inCodeBlock: codeBlockStates[index],
-    inColonBlock: colonStates[index].inColonBlock,
-    colonRole: colonStates[index].colonRole,
-    colonDepth: colonStates[index].colonDepth,
-  }));
+  return lines.map((line, index) => {
+    const inCodeBlock = codeBlockStates[index];
+    const isBlockquote = !inCodeBlock && BLOCKQUOTE_LINE_RE.test(line);
+    const isList =
+      !inCodeBlock && !isBlockquote && (UNORDERED_LIST_LINE_RE.test(line) || ORDERED_LIST_LINE_RE.test(line));
+
+    return {
+      inCodeBlock,
+      inColonBlock: colonStates[index].inColonBlock,
+      colonRole: colonStates[index].colonRole,
+      colonDepth: colonStates[index].colonDepth,
+      isBlockquote,
+      isList,
+    };
+  });
 }
 
 function getLineElementTagName(line, lineState = {}) {
@@ -539,6 +553,8 @@ function insertMarkdownAtCaret(markdown, caret = pendingEditorCaret) {
 
 function applyLineDecorations(element, lineState) {
   element.classList.toggle("is-code-block", lineState.inCodeBlock);
+  element.classList.toggle("is-blockquote", lineState.isBlockquote);
+  element.classList.toggle("is-list", lineState.isList);
   element.classList.toggle("is-colon-block-start", lineState.colonRole === "block-start");
   element.classList.toggle("is-colon-block-end", lineState.colonRole === "block-end");
   element.classList.toggle("is-colon-inline", lineState.colonRole === "inline");
@@ -694,6 +710,8 @@ function lineDecorationsMatch(element, lineState) {
   for (const className of LINE_DECORATION_CLASSES) {
     const shouldHaveClass =
       (className === "is-code-block" && lineState.inCodeBlock) ||
+      (className === "is-blockquote" && lineState.isBlockquote) ||
+      (className === "is-list" && lineState.isList) ||
       (className === "is-colon-block-start" && lineState.colonRole === "block-start") ||
       (className === "is-colon-block-end" && lineState.colonRole === "block-end") ||
       (className === "is-colon-inline" && lineState.colonRole === "inline") ||
