@@ -61,6 +61,10 @@ const LINE_DECORATION_CLASSES = [
   "is-colon-inline",
   ...COLON_DEPTH_CLASSES,
 ];
+const COLON_IMG_LINE_RE = /^:img\{\s*([^}]*)\}\s*$/;
+const COLON_IMG_SRC_RE = /\bsrc\s*=\s*"([^"]*)"/;
+const COLON_IMG_ALT_RE = /\balt\s*=\s*"([^"]*)"/;
+const MARKDOWN_IMG_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
 function getCodeBlockStates(lines) {
   const states = [];
@@ -549,6 +553,143 @@ function applyLineDecorations(element, lineState) {
   }
 }
 
+function parseColonImgAttributes(attributeString) {
+  return {
+    src: attributeString.match(COLON_IMG_SRC_RE)?.[1] ?? "",
+    alt: attributeString.match(COLON_IMG_ALT_RE)?.[1] ?? "",
+  };
+}
+
+function resolveEditorImageUrl(src) {
+  const trimmedSrc = src.trim();
+  if (!trimmedSrc) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(trimmedSrc) || /^data:/i.test(trimmedSrc)) {
+    return trimmedSrc;
+  }
+
+  if (!currentProjectPath) {
+    return trimmedSrc;
+  }
+
+  const relativePath = trimmedSrc.replace(/^\//, "");
+  return `/api/media/file?project=${encodeURIComponent(currentProjectPath)}&path=${encodeURIComponent(relativePath)}`;
+}
+
+function getExpectedImagePreviews(line, lineState = {}) {
+  if (lineState.inCodeBlock || line.length === 0) {
+    return [];
+  }
+
+  const colonImgMatch = line.match(COLON_IMG_LINE_RE);
+  if (colonImgMatch) {
+    const attributes = parseColonImgAttributes(colonImgMatch[1]);
+    return attributes.src ? [attributes] : [];
+  }
+
+  const previews = [];
+  MARKDOWN_IMG_RE.lastIndex = 0;
+  let match = MARKDOWN_IMG_RE.exec(line);
+  while (match) {
+    previews.push({ src: match[2], alt: match[1] });
+    match = MARKDOWN_IMG_RE.exec(line);
+  }
+
+  return previews;
+}
+
+function createEditorImagePreviewChip({ src, alt }) {
+  const preview = document.createElement("span");
+  preview.className = "editor-image-preview";
+  preview.contentEditable = "false";
+  preview.dataset.src = src;
+  preview.dataset.alt = alt ?? "";
+  preview.style.setProperty("--editor-image-url", `url("${resolveEditorImageUrl(src)}")`);
+  preview.setAttribute("role", "button");
+  preview.setAttribute("tabindex", "-1");
+  preview.setAttribute(
+    "aria-label",
+    alt ? `Preview image: ${alt}. Click to enlarge.` : "Preview image. Click to enlarge.",
+  );
+  return preview;
+}
+
+function appendEditorLineContent(element, line, lineState = {}) {
+  if (line.length === 0) {
+    element.append(document.createElement("br"));
+    return;
+  }
+
+  if (lineState.inCodeBlock) {
+    element.textContent = line;
+    return;
+  }
+
+  const colonImgMatch = line.match(COLON_IMG_LINE_RE);
+  if (colonImgMatch) {
+    element.append(document.createTextNode(line));
+    const attributes = parseColonImgAttributes(colonImgMatch[1]);
+    if (attributes.src) {
+      element.append(createEditorImagePreviewChip(attributes));
+    }
+    return;
+  }
+
+  const previews = getExpectedImagePreviews(line, lineState);
+  if (previews.length === 0) {
+    element.textContent = line;
+    return;
+  }
+
+  let lastIndex = 0;
+  MARKDOWN_IMG_RE.lastIndex = 0;
+  let match = MARKDOWN_IMG_RE.exec(line);
+  while (match) {
+    if (match.index > lastIndex) {
+      element.append(document.createTextNode(line.slice(lastIndex, match.index)));
+    }
+
+    element.append(document.createTextNode(match[0]));
+    element.append(createEditorImagePreviewChip({ src: match[2], alt: match[1] }));
+    lastIndex = match.index + match[0].length;
+    match = MARKDOWN_IMG_RE.exec(line);
+  }
+
+  if (lastIndex < line.length) {
+    element.append(document.createTextNode(line.slice(lastIndex)));
+  }
+}
+
+function lineInlineDecorationsMatch(element, line, lineState = {}) {
+  const expectedPreviews = getExpectedImagePreviews(line, lineState);
+  const actualPreviews = [...element.querySelectorAll(".editor-image-preview")].map((preview) => ({
+    src: preview.dataset.src ?? "",
+    alt: preview.dataset.alt ?? "",
+  }));
+
+  if (expectedPreviews.length !== actualPreviews.length) {
+    return false;
+  }
+
+  return expectedPreviews.every(
+    (preview, index) =>
+      preview.src === actualPreviews[index].src && preview.alt === actualPreviews[index].alt,
+  );
+}
+
+function refreshEditorLineInlineDecorations(element, line, lineState = {}) {
+  const caretOffset = getCaretOffsetInElement(element);
+  element.replaceChildren();
+  appendEditorLineContent(element, line, lineState);
+  applyLineDecorations(element, lineState);
+
+  if (caretOffset !== null) {
+    setCaretOffsetInElement(element, caretOffset);
+  }
+}
+
 function lineDecorationsMatch(element, lineState) {
   for (const className of LINE_DECORATION_CLASSES) {
     const shouldHaveClass =
@@ -579,12 +720,7 @@ function createEditorLineElement(line, lineState = {}) {
   }
 
   const paragraph = document.createElement("p");
-  if (line.length === 0) {
-    paragraph.append(document.createElement("br"));
-  } else {
-    paragraph.textContent = line;
-  }
-
+  appendEditorLineContent(paragraph, line, lineState);
   applyLineDecorations(paragraph, lineState);
 
   return paragraph;
@@ -597,6 +733,9 @@ function reevaluateEditorLine(element, lineState = {}) {
   const decorationsMatch = lineDecorationsMatch(element, lineState);
 
   if (tagMatches && decorationsMatch) {
+    if (!lineInlineDecorationsMatch(element, line, lineState)) {
+      refreshEditorLineInlineDecorations(element, line, lineState);
+    }
     return element;
   }
 
@@ -1277,7 +1416,62 @@ projectsDialog.addEventListener("click", (event) => {
   }
 });
 
+const imageLightbox = createImageLightbox();
+
+function createImageLightbox() {
+  const dialog = document.createElement("dialog");
+  dialog.id = "image-lightbox";
+  dialog.className = "image-lightbox";
+  dialog.innerHTML = `
+    <button type="button" class="dialog-close image-lightbox-close" aria-label="Close">&times;</button>
+    <figure class="image-lightbox-figure">
+      <img class="image-lightbox-img" alt="" />
+      <figcaption class="image-lightbox-caption"></figcaption>
+    </figure>
+  `;
+
+  const closeBtn = dialog.querySelector(".image-lightbox-close");
+  const image = dialog.querySelector(".image-lightbox-img");
+  const caption = dialog.querySelector(".image-lightbox-caption");
+
+  closeBtn.addEventListener("click", () => {
+    dialog.close();
+  });
+
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+
+  document.body.append(dialog);
+
+  return {
+    open(src, alt = "") {
+      image.src = resolveEditorImageUrl(src);
+      image.alt = alt;
+      caption.textContent = alt;
+      caption.hidden = !alt;
+      dialog.showModal();
+    },
+  };
+}
+
 editBackBtn.addEventListener("click", showListView);
+markdownEditor.addEventListener("click", (event) => {
+  const preview = event.target.closest(".editor-image-preview");
+  if (!preview) {
+    return;
+  }
+
+  event.preventDefault();
+  imageLightbox.open(preview.dataset.src ?? "", preview.dataset.alt ?? "");
+});
+markdownEditor.addEventListener("mousedown", (event) => {
+  if (event.target.closest(".editor-image-preview")) {
+    event.preventDefault();
+  }
+});
 markdownEditor.addEventListener("input", () => {
   reevaluateMarkdownEditorLines();
   scheduleEditorHistoryCommit();

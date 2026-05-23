@@ -717,6 +717,100 @@ details[open] > .tree-folder-header::before {
   pointer-events: none;
 }
 
+.editor-image-preview {
+  display: inline-block;
+  vertical-align: middle;
+  width: 0;
+  height: 1em;
+  margin-left: 0.35em;
+  position: relative;
+  cursor: zoom-in;
+}
+
+.editor-image-preview::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.5rem;
+  height: 1.875rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background-color: color-mix(in srgb, var(--border) 30%, transparent);
+  background-image: var(--editor-image-url);
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.editor-image-preview:hover::after,
+.editor-image-preview:focus-visible::after {
+  transform: translateY(-50%) scale(1.08);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+}
+
+.image-lightbox {
+  position: relative;
+  width: min(920px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.image-lightbox::backdrop {
+  background: rgb(0 0 0 / 72%);
+}
+
+.image-lightbox-close {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 1;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 45%);
+  color: #fff;
+}
+
+.image-lightbox-close:hover {
+  background: rgb(0 0 0 / 62%);
+}
+
+.image-lightbox-figure {
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.image-lightbox-img {
+  display: block;
+  width: 100%;
+  max-height: calc(100vh - 8rem);
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.image-lightbox-caption {
+  margin: 0;
+  padding: 0 0.25rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.image-lightbox-caption[hidden] {
+  display: none;
+}
+
 .link-dialog {
   width: min(420px, calc(100vw - 2rem));
   padding: 0;
