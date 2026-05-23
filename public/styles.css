@@ -849,17 +849,32 @@ details[open] > .tree-folder-header .tree-folder-chevron {
   align-items: start;
 }
 
-.frontmatter-row--compact,
-.frontmatter-array-item.frontmatter-row--compact {
-  grid-template-columns: minmax(7rem, 0.9fr) 6.5rem 2rem;
+.frontmatter-row--compact > .frontmatter-key-input {
+  grid-column: 1;
+}
+
+.frontmatter-row--compact > .frontmatter-type-select {
+  grid-column: 2;
+}
+
+.frontmatter-row--compact > .frontmatter-remove-btn {
+  grid-column: 4;
 }
 
 .frontmatter-array-item {
   grid-template-columns: 1rem 6.5rem minmax(0, 1.6fr) 2rem;
 }
 
-.frontmatter-array-item.frontmatter-row--compact {
-  grid-template-columns: 1rem 6.5rem 2rem;
+.frontmatter-array-item.frontmatter-row--compact > .frontmatter-array-marker {
+  grid-column: 1;
+}
+
+.frontmatter-array-item.frontmatter-row--compact > .frontmatter-type-select {
+  grid-column: 2;
+}
+
+.frontmatter-array-item.frontmatter-row--compact > .frontmatter-remove-btn {
+  grid-column: 4;
 }
 
 .frontmatter-children {

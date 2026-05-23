@@ -40,6 +40,15 @@ function isBannerImageSrcField(fieldPath) {
   );
 }
 
+function isDateField(fieldPath) {
+  const key = fieldPath[fieldPath.length - 1];
+  return key === "pubDate" || key === "modDate";
+}
+
+function isIsoDateString(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+}
+
 export function createFrontmatterEditor(root, { onChange, getProjectPath } = {}) {
   let data = {};
   let parseError = null;
@@ -468,13 +477,23 @@ function renderScalarEditor(
     return wrapper;
   }
 
-  const input = document.createElement("input");
-  input.type = type === "number" ? "number" : "text";
-  input.className = "frontmatter-value-input";
-  input.value =
+  const stringValue =
     type === "null" ? "" : value === null || value === undefined ? "" : String(value);
-  input.placeholder = type === "null" ? "null" : "value";
+  const useDateInput =
+    type === "string" &&
+    isDateField(fieldPath) &&
+    (stringValue === "" || isIsoDateString(stringValue));
+
+  const input = document.createElement("input");
+  input.type = useDateInput ? "date" : type === "number" ? "number" : "text";
+  input.className = "frontmatter-value-input";
+  input.value = stringValue;
+  input.placeholder = type === "null" ? "null" : useDateInput ? "YYYY-MM-DD" : "value";
   input.spellcheck = false;
+
+  if (useDateInput) {
+    input.setAttribute("aria-label", `${fieldPath[fieldPath.length - 1]} date`);
+  }
 
   input.addEventListener("input", () => {
     parentContainer[parentKey] = coerceScalar(type, input.value);
