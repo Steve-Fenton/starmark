@@ -320,6 +320,173 @@ app.get("/api/file", async (req, res) => {
   }
 });
 
+const IMAGE_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".svg",
+  ".avif",
+  ".ico",
+]);
+
+function resolvePublicSubpath(projectPath, relativePath = "") {
+  const publicDir = path.resolve(projectPath, "public");
+  const normalized = String(relativePath).replace(/^\/+/, "").replace(/\\/g, "/");
+  const target = path.resolve(publicDir, normalized || ".");
+
+  if (target !== publicDir && !target.startsWith(`${publicDir}${path.sep}`)) {
+    return null;
+  }
+
+  return {
+    publicDir,
+    target,
+    relativePath: normalized,
+  };
+}
+
+function toWebPath(relativeToPublic) {
+  const normalized = relativeToPublic.replace(/\\/g, "/");
+  return normalized ? `/${normalized}` : "/";
+}
+
+async function listMediaDirectory(projectPath, relativePath = "img") {
+  const resolved = resolvePublicSubpath(projectPath, relativePath);
+  if (!resolved) {
+    return { error: "Invalid media path" };
+  }
+
+  const { publicDir, target, relativePath: currentDir } = resolved;
+
+  if (!(await isDirectory(publicDir))) {
+    return { error: "This project has no public folder" };
+  }
+
+  if (!(await isDirectory(target))) {
+    return { error: "Folder does not exist" };
+  }
+
+  let entries;
+  try {
+    entries = await fs.readdir(target, { withFileTypes: true });
+  } catch {
+    return { error: "Could not read folder" };
+  }
+
+  const folders = [];
+  const images = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+
+    const entryRelativePath = currentDir
+      ? path.posix.join(currentDir, entry.name)
+      : entry.name;
+
+    if (entry.isDirectory()) {
+      folders.push({
+        name: entry.name,
+        dir: entryRelativePath,
+      });
+      continue;
+    }
+
+    if (!entry.isFile()) continue;
+
+    const ext = path.extname(entry.name).toLowerCase();
+    if (!IMAGE_EXTENSIONS.has(ext)) continue;
+
+    images.push({
+      name: entry.name,
+      dir: currentDir,
+      webPath: toWebPath(entryRelativePath),
+    });
+  }
+
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  images.sort((a, b) => a.name.localeCompare(b.name));
+
+  const parentDir =
+    currentDir === ""
+      ? null
+      : path.posix.dirname(currentDir) === "."
+        ? ""
+        : path.posix.dirname(currentDir);
+
+  return {
+    currentDir,
+    parentDir,
+    folders,
+    images,
+  };
+}
+
+app.get("/api/media", async (req, res) => {
+  const { project: projectPath, dir = "img" } = req.query;
+
+  if (!projectPath || typeof projectPath !== "string") {
+    return res.status(400).json({ error: "A project path is required" });
+  }
+
+  const resolvedProject = path.resolve(projectPath);
+
+  try {
+    const stat = await fs.stat(resolvedProject);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: "Project path is not a directory" });
+    }
+  } catch {
+    return res.status(404).json({ error: "Project does not exist or is not accessible" });
+  }
+
+  const result = await listMediaDirectory(resolvedProject, typeof dir === "string" ? dir : "img");
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  res.json({
+    projectPath: resolvedProject,
+    ...result,
+  });
+});
+
+app.get("/api/media/file", async (req, res) => {
+  const { project: projectPath, path: mediaPath } = req.query;
+
+  if (!projectPath || typeof projectPath !== "string") {
+    return res.status(400).json({ error: "A project path is required" });
+  }
+
+  if (!mediaPath || typeof mediaPath !== "string") {
+    return res.status(400).json({ error: "A media path is required" });
+  }
+
+  const resolvedProject = path.resolve(projectPath);
+  const resolved = resolvePublicSubpath(resolvedProject, mediaPath);
+  if (!resolved) {
+    return res.status(400).json({ error: "Invalid media path" });
+  }
+
+  try {
+    const stat = await fs.stat(resolved.target);
+    if (!stat.isFile()) {
+      return res.status(400).json({ error: "Path is not a file" });
+    }
+  } catch {
+    return res.status(404).json({ error: "File does not exist or is not accessible" });
+  }
+
+  const ext = path.extname(resolved.target).toLowerCase();
+  if (!IMAGE_EXTENSIONS.has(ext)) {
+    return res.status(400).json({ error: "Only image files are supported" });
+  }
+
+  res.sendFile(resolved.target);
+});
+
 const server = app.listen(PORT, () => {
   console.log(`Starmark running at http://localhost:${PORT}`);
 });

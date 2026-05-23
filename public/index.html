@@ -87,6 +87,11 @@
                 <path fill="currentColor" d="M7.775 3.275 9.025 2.025a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"/>
               </svg>
             </button>
+            <button id="image-btn" type="button" class="toolbar-btn" aria-label="Insert image">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path fill="currentColor" d="M2.5 3A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 3h-11ZM2 4.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-7Zm9.053 2.853-2.5 3a.5.5 0 0 1-.786.043L5.847 8.207 3.853 10.5a.5.5 0 0 1-.853-.354.5.5 0 0 1 .146-.396l2.25-2.625a.5.5 0 0 1 .786-.043l1.87 2.189 2.147-2.576a.5.5 0 0 1 .804.058ZM5.5 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"/>
+              </svg>
+            </button>
           </div>
         </div>
         <div
@@ -118,6 +123,50 @@
           <input id="link-url" type="text" autocomplete="off" spellcheck="false" />
         </div>
         <div class="link-form-actions">
+          <button type="submit" class="primary">Done</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="media-dialog" class="media-dialog">
+      <div class="dialog-header">
+        <h2>Insert image</h2>
+        <button id="media-dialog-close" type="button" class="dialog-close" aria-label="Close">
+          &times;
+        </button>
+      </div>
+        <div id="media-browser-view" class="media-browser">
+        <div class="media-toolbar">
+          <button id="media-up-btn" type="button" class="media-up-btn" disabled aria-label="Go up one folder">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+              <path fill="currentColor" d="M8 3.5 3.5 8 5 9.5 7.25 7.25V12.5h1.5V7.25L10.5 9.5 12 8z"/>
+            </svg>
+            Up
+          </button>
+          <nav id="media-breadcrumb" class="media-breadcrumb" aria-label="Media path"></nav>
+        </div>
+        <p id="media-status" class="media-status" hidden></p>
+        <div id="media-contents" class="media-contents">
+          <ul id="media-folders" class="media-folders"></ul>
+          <div id="media-images" class="media-images"></div>
+        </div>
+      </div>
+      <form id="image-form" class="image-form" hidden aria-hidden="true">
+        <p id="image-selected-name" class="image-selected-name"></p>
+        <div class="link-field">
+          <label for="image-alt">Alt text</label>
+          <input id="image-alt" type="text" autocomplete="off" spellcheck="true" />
+        </div>
+        <label class="image-checkbox-field" for="image-lazy">
+          <input id="image-lazy" type="checkbox" checked />
+          Lazy load
+        </label>
+        <div class="link-field">
+          <label for="image-caption">Caption</label>
+          <input id="image-caption" type="text" autocomplete="off" spellcheck="true" />
+        </div>
+        <div class="link-form-actions image-form-actions">
+          <button id="image-back-btn" type="button">Back</button>
           <button type="submit" class="primary">Done</button>
         </div>
       </form>

@@ -24,6 +24,21 @@ const linkDialogClose = document.getElementById("link-dialog-close");
 const linkForm = document.getElementById("link-form");
 const linkTextInput = document.getElementById("link-text");
 const linkUrlInput = document.getElementById("link-url");
+const imageBtn = document.getElementById("image-btn");
+const mediaDialog = document.getElementById("media-dialog");
+const mediaDialogClose = document.getElementById("media-dialog-close");
+const mediaUpBtn = document.getElementById("media-up-btn");
+const mediaBreadcrumb = document.getElementById("media-breadcrumb");
+const mediaStatus = document.getElementById("media-status");
+const mediaFolders = document.getElementById("media-folders");
+const mediaImages = document.getElementById("media-images");
+const mediaBrowserView = document.getElementById("media-browser-view");
+const imageForm = document.getElementById("image-form");
+const imageSelectedName = document.getElementById("image-selected-name");
+const imageAltInput = document.getElementById("image-alt");
+const imageLazyInput = document.getElementById("image-lazy");
+const imageCaptionInput = document.getElementById("image-caption");
+const imageBackBtn = document.getElementById("image-back-btn");
 const topBar = document.querySelector(".top-bar");
 
 let projectButtons = [];
@@ -33,6 +48,9 @@ let expandedPaths = new Set();
 let currentEditFile = null;
 let currentEditFrontmatter = null;
 let savedLinkRange = null;
+let savedEditorCaret = null;
+let currentMediaDir = "img";
+let pendingImage = null;
 
 const SOURCE_ROOTS = {
   content: "src/content",
@@ -285,6 +303,304 @@ function saveEditorSelection() {
 
   savedLinkRange = range.cloneRange();
   return range.toString();
+}
+
+function saveEditorCaret() {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    savedEditorCaret = null;
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!markdownEditor.contains(range.commonAncestorContainer)) {
+    savedEditorCaret = null;
+    return;
+  }
+
+  const lineElements = getEditorLineElements();
+
+  for (let lineIndex = 0; lineIndex < lineElements.length; lineIndex += 1) {
+    const element = lineElements[lineIndex];
+    if (!element.contains(range.startContainer) && element !== range.startContainer) {
+      continue;
+    }
+
+    const offset = getCaretOffsetInElement(element);
+    if (offset !== null) {
+      savedEditorCaret = { lineIndex, offset };
+      return;
+    }
+  }
+
+  savedEditorCaret = { lineIndex: lineElements.length, offset: 0 };
+}
+
+function getEditorLineElements() {
+  return [...markdownEditor.children].filter((child) => child.matches(EDITOR_LINE_SELECTOR));
+}
+
+function getEditorLines() {
+  return getEditorLineElements().map(getEditorLineText);
+}
+
+function insertMarkdownAtCaret(markdown) {
+  if (!savedEditorCaret) {
+    return false;
+  }
+
+  const lines = getEditorLines();
+  const { lineIndex, offset } = savedEditorCaret;
+  const currentLine = lines[lineIndex] ?? "";
+  const before = currentLine.slice(0, offset);
+  const after = currentLine.slice(offset);
+  const insertedLines = markdown.split(/\r?\n/);
+
+  const nextLines = [
+    ...lines.slice(0, lineIndex),
+    before,
+    ...insertedLines,
+    after,
+    ...lines.slice(lineIndex + 1),
+  ];
+
+  renderMarkdownEditor(nextLines.join("\n"));
+
+  const caretLineIndex = lineIndex + 1 + insertedLines.length - 1;
+  const lineElements = getEditorLineElements();
+  const caretElement = lineElements[caretLineIndex];
+
+  if (caretElement) {
+    setCaretOffsetInElement(caretElement, insertedLines[insertedLines.length - 1].length);
+  }
+
+  savedEditorCaret = null;
+  markdownEditor.focus();
+  return true;
+}
+
+function escapeMarkdownAttribute(value) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function filenameToAlt(filename) {
+  const base = filename.replace(/\.[^.]+$/, "");
+  return base
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildFigureMarkdown(webPath, { alt, lazyLoad, caption }) {
+  const safeAlt = escapeMarkdownAttribute(alt);
+  const attributes = [`src="${webPath}"`, `alt="${safeAlt}"`];
+
+  if (lazyLoad) {
+    attributes.push('loading="lazy"');
+  }
+
+  const lines = [":::figure", "", `:img{ ${attributes.join(" ")} }`, ""];
+
+  const trimmedCaption = caption.trim();
+  if (trimmedCaption) {
+    lines.push(`::figcaption[${trimmedCaption}]`, "");
+  }
+
+  lines.push(":::");
+  return lines.join("\n");
+}
+
+function insertImageFigure(webPath, { alt, lazyLoad, caption }) {
+  return insertMarkdownAtCaret(buildFigureMarkdown(webPath, { alt, lazyLoad, caption }));
+}
+
+function showMediaBrowserView() {
+  pendingImage = null;
+  mediaBrowserView.hidden = false;
+  mediaBrowserView.setAttribute("aria-hidden", "false");
+  imageForm.hidden = true;
+  imageForm.setAttribute("aria-hidden", "true");
+}
+
+function showMediaDetailsView(image) {
+  pendingImage = image;
+  imageSelectedName.textContent = image.name;
+  imageAltInput.value = filenameToAlt(image.name);
+  imageLazyInput.checked = true;
+  imageCaptionInput.value = "";
+  mediaBrowserView.hidden = true;
+  mediaBrowserView.setAttribute("aria-hidden", "true");
+  imageForm.hidden = false;
+  imageForm.setAttribute("aria-hidden", "false");
+  imageAltInput.focus();
+}
+
+function submitImageForm(event) {
+  event.preventDefault();
+
+  if (!pendingImage) {
+    return;
+  }
+
+  if (
+    insertImageFigure(pendingImage.webPath, {
+      alt: imageAltInput.value,
+      lazyLoad: imageLazyInput.checked,
+      caption: imageCaptionInput.value,
+    })
+  ) {
+    mediaDialog.close();
+  }
+}
+
+function formatMediaDirLabel(relativeDir) {
+  return relativeDir ? relativeDir.replace(/\//g, " / ") : "public";
+}
+
+function getMediaFileUrl(relativePath) {
+  return `/api/media/file?project=${encodeURIComponent(currentProjectPath)}&path=${encodeURIComponent(relativePath)}`;
+}
+
+function setMediaStatus(message, { isError = false } = {}) {
+  mediaStatus.hidden = !message;
+  mediaStatus.textContent = message ?? "";
+  mediaStatus.classList.toggle("is-error", Boolean(isError && message));
+}
+
+function renderMediaBreadcrumb(currentDir) {
+  mediaBreadcrumb.replaceChildren();
+
+  const segments = currentDir ? currentDir.split("/") : [];
+  const crumbs = [{ label: "public", dir: "" }];
+
+  for (let index = 0; index < segments.length; index += 1) {
+    crumbs.push({
+      label: segments[index],
+      dir: segments.slice(0, index + 1).join("/"),
+    });
+  }
+
+  crumbs.forEach((crumb, index) => {
+    if (index > 0) {
+      const separator = document.createElement("span");
+      separator.className = "media-breadcrumb-separator";
+      separator.textContent = "/";
+      separator.setAttribute("aria-hidden", "true");
+      mediaBreadcrumb.append(separator);
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = crumb.label;
+    button.addEventListener("click", () => {
+      loadMediaDirectory(crumb.dir);
+    });
+    mediaBreadcrumb.append(button);
+  });
+}
+
+function renderMediaDirectory(data) {
+  currentMediaDir = data.currentDir;
+  mediaUpBtn.disabled = data.parentDir === null;
+  mediaUpBtn.onclick = () => {
+    if (data.parentDir !== null) {
+      loadMediaDirectory(data.parentDir === "" ? "" : data.parentDir);
+    }
+  };
+
+  renderMediaBreadcrumb(data.currentDir);
+  mediaFolders.replaceChildren();
+  mediaImages.replaceChildren();
+
+  for (const folder of data.folders) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "media-folder-btn";
+    button.innerHTML = `<svg class="media-folder-icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1.5 3.75A1.25 1.25 0 0 1 2.75 2.5h3.098l1.2 1.2h6.252A1.25 1.25 0 0 1 14.5 5.15v7.1a1.25 1.25 0 0 1-1.25 1.25h-10A1.25 1.25 0 0 1 2 12.15v-8.4Z"/></svg><span>${folder.name}</span>`;
+    button.addEventListener("click", () => {
+      loadMediaDirectory(folder.dir);
+    });
+    item.append(button);
+    mediaFolders.append(item);
+  }
+
+  for (const image of data.images) {
+    const relativePath = image.webPath.replace(/^\//, "");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "media-image-btn";
+    button.title = image.name;
+
+    const preview = document.createElement("img");
+    preview.className = "media-image-preview";
+    preview.src = getMediaFileUrl(relativePath);
+    preview.alt = "";
+    preview.loading = "lazy";
+
+    const label = document.createElement("span");
+    label.className = "media-image-name";
+    label.textContent = image.name;
+
+    button.append(preview, label);
+    button.addEventListener("click", () => {
+      showMediaDetailsView(image);
+    });
+
+    mediaImages.append(button);
+  }
+
+  if (data.folders.length === 0 && data.images.length === 0) {
+    setMediaStatus(`No folders or images in ${formatMediaDirLabel(data.currentDir)}.`);
+  } else {
+    setMediaStatus("");
+  }
+}
+
+async function loadMediaDirectory(relativeDir = "img") {
+  if (!currentProjectPath) {
+    setMediaStatus("Open and scan a project first.", { isError: true });
+    mediaFolders.replaceChildren();
+    mediaImages.replaceChildren();
+    mediaUpBtn.disabled = true;
+    mediaBreadcrumb.replaceChildren();
+    return;
+  }
+
+  setMediaStatus("Loading…");
+
+  try {
+    const params = new URLSearchParams({
+      project: currentProjectPath,
+      dir: relativeDir,
+    });
+    const response = await fetch(`/api/media?${params.toString()}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      setMediaStatus(data.error ?? "Could not load media", { isError: true });
+      mediaFolders.replaceChildren();
+      mediaImages.replaceChildren();
+      mediaUpBtn.disabled = true;
+      mediaBreadcrumb.replaceChildren();
+      return;
+    }
+
+    renderMediaDirectory(data);
+  } catch {
+    setMediaStatus("Could not load media", { isError: true });
+    mediaFolders.replaceChildren();
+    mediaImages.replaceChildren();
+    mediaUpBtn.disabled = true;
+    mediaBreadcrumb.replaceChildren();
+  }
+}
+
+function openMediaDialog() {
+  saveEditorCaret();
+  showMediaBrowserView();
+  mediaDialog.showModal();
+  loadMediaDirectory("img");
 }
 
 function insertMarkdownLinkAtSelection(linkText, url) {
@@ -1101,6 +1417,40 @@ linkTextInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     linkUrlInput.focus();
+  }
+});
+
+imageBtn.addEventListener("mousedown", (event) => {
+  event.preventDefault();
+});
+
+imageBtn.addEventListener("click", openMediaDialog);
+
+mediaDialogClose.addEventListener("click", () => {
+  mediaDialog.close();
+});
+
+mediaDialog.addEventListener("click", (event) => {
+  if (event.target === mediaDialog) {
+    mediaDialog.close();
+  }
+});
+
+mediaDialog.addEventListener("close", () => {
+  savedEditorCaret = null;
+  showMediaBrowserView();
+});
+
+imageForm.addEventListener("submit", submitImageForm);
+
+imageBackBtn.addEventListener("click", () => {
+  showMediaBrowserView();
+});
+
+imageAltInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    imageCaptionInput.focus();
   }
 });
 
