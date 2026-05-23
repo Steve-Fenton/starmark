@@ -1,4 +1,6 @@
 import { icons } from "./icons.js";
+import { createFrontmatterEditor } from "./frontmatter-editor.js";
+import { normalizeFrontmatter } from "./frontmatter.js";
 
 const folderInput = document.getElementById("folder-path");
 const browseBtn = document.getElementById("browse-btn");
@@ -19,7 +21,15 @@ const editFilePath = document.getElementById("edit-file-path");
 const markdownEditor = document.getElementById("markdown-editor");
 const editToolbar = document.getElementById("edit-toolbar");
 const frontmatterPanel = document.getElementById("frontmatter-panel");
-const frontmatterContent = document.getElementById("frontmatter-content");
+const frontmatterEditorRoot = document.getElementById("frontmatter-editor");
+const frontmatterEditor = createFrontmatterEditor(frontmatterEditorRoot, {
+  onChange(value, options = {}) {
+    handleFrontmatterInput();
+    if (options.save) {
+      saveCurrentFile();
+    }
+  },
+});
 const projectsSection = document.getElementById("projects-section");
 const projectList = document.getElementById("project-list");
 const projectsMenuBtn = document.getElementById("projects-menu-btn");
@@ -1208,7 +1218,7 @@ async function persistFileNavOrder(file, navOrder) {
 
   if (currentEditFile?.absolutePath === file.absolutePath) {
     currentEditFrontmatter = normalizeFrontmatter(newFrontmatter);
-    frontmatterContent.value = currentEditFrontmatter ?? "";
+    frontmatterEditor.setValue(currentEditFrontmatter ?? "");
     updateEditHeader(currentEditFile, currentEditFrontmatter);
   }
 }
@@ -1554,7 +1564,7 @@ function showListView() {
   currentEditFile = null;
   currentEditFrontmatter = null;
   frontmatterPanel.hidden = true;
-  frontmatterContent.value = "";
+  frontmatterEditor.setValue("");
   clearTimeout(saveButtonResetTimeout);
   setSaveButtonState({ disabled: true });
   setFileInUrl(null);
@@ -1585,11 +1595,6 @@ function updateEditHeader(file, frontmatter = null) {
   editFileName.textContent = getFrontmatterTitle(frontmatter) ?? file.name;
   editFilePath.textContent = file.relativePath;
   editFilePath.title = file.absolutePath;
-}
-
-function normalizeFrontmatter(value) {
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
 }
 
 function splitFrontmatter(content) {
@@ -1661,7 +1666,7 @@ async function saveCurrentFile() {
   }
 
   flushEditorHistory();
-  currentEditFrontmatter = normalizeFrontmatter(frontmatterContent.value);
+  currentEditFrontmatter = normalizeFrontmatter(frontmatterEditor.getValue());
   const content = buildFileContent(currentEditFrontmatter, getEditorContent());
 
   isSavingFile = true;
@@ -1690,7 +1695,7 @@ async function saveCurrentFile() {
 
     const { frontmatter, body } = splitFrontmatter(content);
     currentEditFrontmatter = normalizeFrontmatter(frontmatter ?? "");
-    frontmatterContent.value = currentEditFrontmatter ?? "";
+    frontmatterEditor.setValue(currentEditFrontmatter ?? "");
     updateEditHeader(currentEditFile, currentEditFrontmatter);
 
     const navOrder = parseNavOrderFromFrontmatter(currentEditFrontmatter);
@@ -1715,7 +1720,7 @@ async function saveCurrentFile() {
 }
 
 function updateFrontmatterPanel(frontmatter) {
-  frontmatterContent.value = frontmatter ?? "";
+  frontmatterEditor.setValue(frontmatter ?? "");
   frontmatterPanel.hidden = false;
   frontmatterPanel.open = localStorage.getItem("starmark:frontmatter-panel-open") === "true";
 }
@@ -1725,15 +1730,13 @@ function handleFrontmatterInput() {
     return;
   }
 
-  currentEditFrontmatter = normalizeFrontmatter(frontmatterContent.value);
+  currentEditFrontmatter = normalizeFrontmatter(frontmatterEditor.getValue());
   updateEditHeader(currentEditFile, currentEditFrontmatter);
 }
 
 frontmatterPanel.addEventListener("toggle", () => {
   localStorage.setItem("starmark:frontmatter-panel-open", frontmatterPanel.open ? "true" : "false");
 });
-
-frontmatterContent.addEventListener("input", handleFrontmatterInput);
 
 function showEditView() {
   listView.hidden = true;
@@ -2843,14 +2846,6 @@ markdownEditor.addEventListener("keydown", (event) => {
   } else if (key === "y") {
     event.preventDefault();
     redoEditorChange();
-  }
-});
-
-frontmatterContent.addEventListener("keydown", (event) => {
-  const isMod = event.metaKey || event.ctrlKey;
-  if (isMod && event.key.toLowerCase() === "s") {
-    event.preventDefault();
-    saveCurrentFile();
   }
 });
 
