@@ -1,0 +1,464 @@
+import { icons } from "./icons.js";
+
+const IMAGE_UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.svg,.avif,.ico,image/*";
+const IMAGE_UPLOAD_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".svg",
+  ".avif",
+  ".ico",
+]);
+
+export function createMediaDialog({
+  getProjectPath,
+  title = "Media",
+  selectMode = "path",
+  onSelect,
+  onInsert,
+  onOpen,
+  onClose,
+  dialogId = "media-dialog",
+}) {
+  let pendingImage = null;
+
+  const dialog = document.createElement("dialog");
+  dialog.id = dialogId;
+  dialog.className = "media-dialog";
+  dialog.innerHTML = `
+    <div class="dialog-header">
+      <h2></h2>
+      <button type="button" class="dialog-close media-dialog-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="media-browser">
+      <div class="media-toolbar">
+        <button type="button" class="media-up-btn" disabled aria-label="Go up one folder">
+          ${icons.arrowUp}
+          Up
+        </button>
+        <nav class="media-breadcrumb" aria-label="Media path"></nav>
+      </div>
+      <div class="media-search">
+        <input
+          type="search"
+          class="media-search-input"
+          placeholder="Search by file name"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Search images by file name"
+        />
+      </div>
+      <p class="media-status" hidden></p>
+      <div class="media-grid"></div>
+    </div>
+    <form class="image-form" hidden aria-hidden="true">
+      <p class="image-selected-name"></p>
+      <div class="link-field">
+        <label for="${dialogId}-image-alt">Alt text</label>
+        <input id="${dialogId}-image-alt" type="text" autocomplete="off" spellcheck="true" />
+      </div>
+      <label class="image-checkbox-field" for="${dialogId}-image-lazy">
+        <input id="${dialogId}-image-lazy" type="checkbox" checked />
+        Lazy load
+      </label>
+      <div class="link-field">
+        <label for="${dialogId}-image-caption">Caption</label>
+        <input id="${dialogId}-image-caption" type="text" autocomplete="off" spellcheck="true" />
+      </div>
+      <div class="link-form-actions image-form-actions">
+        <button type="button" class="image-back-btn">Back</button>
+        <button type="submit" class="primary">Done</button>
+      </div>
+    </form>
+  `;
+
+  dialog.querySelector(".dialog-header h2").textContent = title;
+
+  const closeBtn = dialog.querySelector(".media-dialog-close");
+  const mediaUpBtn = dialog.querySelector(".media-up-btn");
+  const mediaBreadcrumb = dialog.querySelector(".media-breadcrumb");
+  const mediaSearchInput = dialog.querySelector(".media-search-input");
+  const mediaStatus = dialog.querySelector(".media-status");
+  const mediaGrid = dialog.querySelector(".media-grid");
+  const mediaBrowserView = dialog.querySelector(".media-browser");
+  const imageForm = dialog.querySelector(".image-form");
+  const imageSelectedName = dialog.querySelector(".image-selected-name");
+  const imageAltInput = dialog.querySelector(`#${dialogId}-image-alt`);
+  const imageLazyInput = dialog.querySelector(`#${dialogId}-image-lazy`);
+  const imageCaptionInput = dialog.querySelector(`#${dialogId}-image-caption`);
+  const imageBackBtn = dialog.querySelector(".image-back-btn");
+
+  let currentMediaDir = "img";
+  let isMediaUploading = false;
+
+  function formatMediaDirLabel(relativeDir) {
+    return relativeDir ? relativeDir.replace(/\//g, " / ") : "public";
+  }
+
+  function getMediaFileUrl(relativePath) {
+    return `/api/media/file?project=${encodeURIComponent(getProjectPath())}&path=${encodeURIComponent(relativePath)}`;
+  }
+
+  function getImageSearchLabel(image, searchRootDir) {
+    if (image.dir === searchRootDir) {
+      return image.name;
+    }
+
+    const fullPath = image.dir ? `${image.dir}/${image.name}` : image.name;
+    const prefix = searchRootDir ? `${searchRootDir}/` : "";
+
+    if (searchRootDir && fullPath.startsWith(prefix)) {
+      return fullPath.slice(prefix.length);
+    }
+
+    return fullPath;
+  }
+
+  function navigateToMediaDirectory(relativeDir) {
+    mediaSearchInput.value = "";
+    loadMediaDirectory(relativeDir);
+  }
+
+  function isImageUploadFile(file) {
+    const dotIndex = file.name.lastIndexOf(".");
+    if (dotIndex === -1) {
+      return false;
+    }
+
+    const extension = file.name.slice(dotIndex).toLowerCase();
+    return IMAGE_UPLOAD_EXTENSIONS.has(extension);
+  }
+
+  function createMediaAddItem() {
+    const label = document.createElement("label");
+    label.className = "media-item-btn media-add-btn";
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.className = "media-upload-input";
+    input.accept = IMAGE_UPLOAD_ACCEPT;
+    input.disabled = isMediaUploading;
+
+    const preview = document.createElement("span");
+    preview.className = "media-item-preview media-add-preview";
+    preview.innerHTML = icons.plus;
+    preview.setAttribute("aria-hidden", "true");
+
+    const name = document.createElement("span");
+    name.className = "media-item-name";
+    name.textContent = "Add";
+
+    label.append(input, preview, name);
+    label.title = "Upload image";
+
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      input.value = "";
+
+      if (!file) {
+        return;
+      }
+
+      if (!isImageUploadFile(file)) {
+        setMediaStatus("Only image files are supported.", { isError: true });
+        return;
+      }
+
+      isMediaUploading = true;
+      input.disabled = true;
+      setMediaStatus("Uploading…");
+
+      try {
+        const params = new URLSearchParams({
+          project: getProjectPath(),
+          dir: currentMediaDir,
+          filename: file.name,
+        });
+        const response = await fetch(`/api/media/upload?${params.toString()}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+          body: file,
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          setMediaStatus(data.error ?? "Could not upload image", { isError: true });
+          return;
+        }
+
+        await loadMediaDirectory(currentMediaDir);
+      } catch {
+        setMediaStatus("Could not upload image", { isError: true });
+      } finally {
+        isMediaUploading = false;
+        input.disabled = false;
+      }
+    });
+
+    return label;
+  }
+
+  function setMediaStatus(message, { isError = false } = {}) {
+    mediaStatus.hidden = !message;
+    mediaStatus.textContent = message ?? "";
+    mediaStatus.classList.toggle("is-error", Boolean(isError && message));
+  }
+
+  function renderMediaBreadcrumb(currentDir) {
+    mediaBreadcrumb.replaceChildren();
+
+    const segments = currentDir ? currentDir.split("/") : [];
+    const crumbs = [{ label: "public", dir: "" }];
+
+    for (let index = 0; index < segments.length; index += 1) {
+      crumbs.push({
+        label: segments[index],
+        dir: segments.slice(0, index + 1).join("/"),
+      });
+    }
+
+    crumbs.forEach((crumb, index) => {
+      if (index > 0) {
+        const separator = document.createElement("span");
+        separator.className = "media-breadcrumb-separator";
+        separator.textContent = "/";
+        separator.setAttribute("aria-hidden", "true");
+        mediaBreadcrumb.append(separator);
+      }
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = crumb.label;
+      button.addEventListener("click", () => {
+        navigateToMediaDirectory(crumb.dir);
+      });
+      mediaBreadcrumb.append(button);
+    });
+  }
+
+  function showMediaBrowserView() {
+    pendingImage = null;
+    mediaBrowserView.hidden = false;
+    mediaBrowserView.setAttribute("aria-hidden", "false");
+    imageForm.hidden = true;
+    imageForm.setAttribute("aria-hidden", "true");
+  }
+
+  function showMediaDetailsView(image) {
+    pendingImage = image;
+    imageSelectedName.textContent = image.name;
+    imageAltInput.value = filenameToAlt(image.name);
+    imageLazyInput.checked = true;
+    imageCaptionInput.value = "";
+    mediaBrowserView.hidden = true;
+    mediaBrowserView.setAttribute("aria-hidden", "true");
+    imageForm.hidden = false;
+    imageForm.setAttribute("aria-hidden", "false");
+    imageAltInput.focus();
+  }
+
+  function handleImageSelection(image) {
+    if (selectMode === "path") {
+      onSelect?.(image);
+      dialog.close();
+      return;
+    }
+
+    showMediaDetailsView(image);
+  }
+
+  function renderMediaDirectory(data) {
+    const isSearching = Boolean(data.searchQuery);
+
+    mediaUpBtn.disabled = data.parentDir === null;
+    mediaUpBtn.onclick = () => {
+      if (data.parentDir !== null) {
+        navigateToMediaDirectory(data.parentDir === "" ? "" : data.parentDir);
+      }
+    };
+
+    renderMediaBreadcrumb(data.currentDir);
+    mediaGrid.replaceChildren();
+
+    if (!isSearching) {
+      for (const folder of data.folders) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "media-item-btn media-folder-btn";
+        button.title = folder.name;
+
+        const preview = document.createElement("span");
+        preview.className = "media-item-preview media-folder-preview";
+        preview.innerHTML = icons.folder;
+        preview.setAttribute("aria-hidden", "true");
+
+        const label = document.createElement("span");
+        label.className = "media-item-name";
+        label.textContent = folder.name;
+
+        button.append(preview, label);
+        button.addEventListener("click", () => {
+          navigateToMediaDirectory(folder.dir);
+        });
+        mediaGrid.append(button);
+      }
+
+      mediaGrid.append(createMediaAddItem());
+    }
+
+    for (const image of data.images) {
+      const relativePath = image.webPath.replace(/^\//, "");
+      const displayName = isSearching
+        ? getImageSearchLabel(image, data.currentDir)
+        : image.name;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "media-item-btn media-image-btn";
+      button.title = displayName;
+
+      const preview = document.createElement("img");
+      preview.className = "media-item-preview media-image-preview";
+      preview.src = getMediaFileUrl(relativePath);
+      preview.alt = "";
+      preview.loading = "lazy";
+
+      const label = document.createElement("span");
+      label.className = "media-item-name";
+      label.textContent = displayName;
+
+      button.append(preview, label);
+      button.addEventListener("click", () => {
+        handleImageSelection(image);
+      });
+
+      mediaGrid.append(button);
+    }
+
+    if (data.folders.length === 0 && data.images.length === 0) {
+      if (isSearching) {
+        setMediaStatus(
+          `No images matching "${data.searchQuery}" in ${formatMediaDirLabel(data.currentDir)}.`,
+        );
+      } else {
+        setMediaStatus("");
+      }
+    } else {
+      setMediaStatus("");
+    }
+  }
+
+  async function loadMediaDirectory(relativeDir = currentMediaDir) {
+    currentMediaDir = relativeDir;
+    const searchQuery = mediaSearchInput.value.trim();
+
+    if (!getProjectPath()) {
+      setMediaStatus("Open and scan a project first.", { isError: true });
+      mediaGrid.replaceChildren();
+      mediaUpBtn.disabled = true;
+      mediaBreadcrumb.replaceChildren();
+      return;
+    }
+
+    setMediaStatus(searchQuery ? "Searching…" : "Loading…");
+
+    try {
+      const params = new URLSearchParams({
+        project: getProjectPath(),
+        dir: relativeDir,
+      });
+
+      if (searchQuery) {
+        params.set("q", searchQuery);
+      }
+
+      const response = await fetch(`/api/media?${params.toString()}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMediaStatus(data.error ?? "Could not load media", { isError: true });
+        mediaGrid.replaceChildren();
+        mediaUpBtn.disabled = true;
+        mediaBreadcrumb.replaceChildren();
+        return;
+      }
+
+      renderMediaDirectory(data);
+    } catch {
+      setMediaStatus("Could not load media", { isError: true });
+      mediaGrid.replaceChildren();
+      mediaUpBtn.disabled = true;
+      mediaBreadcrumb.replaceChildren();
+    }
+  }
+
+  function openMediaDialog() {
+    onOpen?.();
+    showMediaBrowserView();
+    mediaSearchInput.value = "";
+    currentMediaDir = "img";
+    dialog.showModal();
+    loadMediaDirectory("img");
+  }
+
+  closeBtn.addEventListener("click", () => {
+    dialog.close();
+  });
+
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("close", () => {
+    onClose?.();
+    showMediaBrowserView();
+  });
+
+  imageForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (!pendingImage) {
+      return;
+    }
+
+    const handled = onInsert?.(pendingImage, {
+      alt: imageAltInput.value,
+      lazyLoad: imageLazyInput.checked,
+      caption: imageCaptionInput.value,
+    });
+
+    if (handled !== false) {
+      dialog.close();
+    }
+  });
+
+  imageBackBtn.addEventListener("click", () => {
+    showMediaBrowserView();
+  });
+
+  mediaSearchInput.addEventListener("input", () => {
+    loadMediaDirectory(currentMediaDir);
+  });
+
+  imageAltInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      imageCaptionInput.focus();
+    }
+  });
+
+  return { dialog, openMediaDialog };
+}
+
+function filenameToAlt(filename) {
+  const base = filename.replace(/\.[^.]+$/, "");
+  return base
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}

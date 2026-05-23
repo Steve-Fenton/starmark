@@ -29,6 +29,7 @@ const frontmatterEditor = createFrontmatterEditor(frontmatterEditorRoot, {
       saveCurrentFile();
     }
   },
+  getProjectPath: () => currentProjectPath,
 });
 const projectsSection = document.getElementById("projects-section");
 const projectList = document.getElementById("project-list");

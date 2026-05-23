@@ -883,7 +883,41 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 }
 
 .frontmatter-scalar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   width: 100%;
+}
+
+.frontmatter-scalar .frontmatter-value-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.frontmatter-media-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2.15rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.frontmatter-media-btn:hover:not(:disabled) {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.frontmatter-media-btn svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .frontmatter-boolean-label {

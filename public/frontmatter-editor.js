@@ -1,4 +1,5 @@
 import { icons } from "./icons.js";
+import { createMediaDialog } from "./media-browser.js";
 import {
   defaultValueForType,
   inferValueType,
@@ -31,7 +32,15 @@ function coerceScalar(type, rawValue) {
   }
 }
 
-export function createFrontmatterEditor(root, { onChange } = {}) {
+function isBannerImageSrcField(fieldPath) {
+  return (
+    fieldPath.length >= 2 &&
+    fieldPath[fieldPath.length - 2] === "bannerImage" &&
+    fieldPath[fieldPath.length - 1] === "src"
+  );
+}
+
+export function createFrontmatterEditor(root, { onChange, getProjectPath } = {}) {
   let data = {};
   let parseError = null;
   let rawFallback = "";
@@ -40,6 +49,32 @@ export function createFrontmatterEditor(root, { onChange } = {}) {
   const container = document.createElement("div");
   container.className = "frontmatter-form";
   root.replaceChildren(container);
+
+  let mediaPickerTarget = null;
+
+  const mediaPickerContext = {
+    openMediaPicker: null,
+    setTarget(callback) {
+      mediaPickerTarget = callback;
+    },
+  };
+
+  if (getProjectPath) {
+    const { dialog, openMediaDialog } = createMediaDialog({
+      getProjectPath,
+      title: "Choose image",
+      selectMode: "path",
+      dialogId: "media-dialog-frontmatter",
+      onSelect(image) {
+        mediaPickerTarget?.(image.webPath);
+      },
+      onClose() {
+        mediaPickerTarget = null;
+      },
+    });
+    document.body.append(dialog);
+    mediaPickerContext.openMediaPicker = openMediaDialog;
+  }
 
   function emitChange() {
     if (silent || !onChange) {
@@ -106,7 +141,7 @@ export function createFrontmatterEditor(root, { onChange } = {}) {
       return;
     }
 
-    container.appendChild(renderObjectEditor(data, refresh, touchData, 0));
+    container.appendChild(renderObjectEditor(data, refresh, touchData, 0, [], mediaPickerContext));
     container.appendChild(renderAddFieldButton(data, refresh));
   }
 
@@ -196,7 +231,7 @@ function renderAddFieldButton(objectValue, onRefresh, label = "Add field") {
   return footer;
 }
 
-function renderObjectEditor(objectValue, onRefresh, onValueChange, depth) {
+function renderObjectEditor(objectValue, onRefresh, onValueChange, depth, fieldPath, mediaPickerContext) {
   const section = document.createElement("div");
   section.className = "frontmatter-node frontmatter-object";
   if (depth > 0) {
@@ -213,13 +248,33 @@ function renderObjectEditor(objectValue, onRefresh, onValueChange, depth) {
   }
 
   for (const [key, value] of entries) {
-    section.appendChild(renderFieldRow(key, value, objectValue, onRefresh, onValueChange, depth));
+    section.appendChild(
+      renderFieldRow(
+        key,
+        value,
+        objectValue,
+        onRefresh,
+        onValueChange,
+        depth,
+        [...fieldPath, key],
+        mediaPickerContext,
+      ),
+    );
   }
 
   return section;
 }
 
-function renderFieldRow(key, value, parentObject, onRefresh, onValueChange, depth) {
+function renderFieldRow(
+  key,
+  value,
+  parentObject,
+  onRefresh,
+  onValueChange,
+  depth,
+  fieldPath,
+  mediaPickerContext,
+) {
   const field = document.createElement("div");
   field.className = "frontmatter-field";
 
@@ -287,7 +342,15 @@ function renderFieldRow(key, value, parentObject, onRefresh, onValueChange, dept
     const valueHost = document.createElement("div");
     valueHost.className = "frontmatter-value-host";
     valueHost.appendChild(
-      renderScalarEditor(value, currentType, parentObject, key, onValueChange),
+      renderScalarEditor(
+        value,
+        currentType,
+        parentObject,
+        key,
+        onValueChange,
+        fieldPath,
+        mediaPickerContext,
+      ),
     );
     row.append(keyInput, typeSelect, valueHost, removeButton);
   }
@@ -298,7 +361,17 @@ function renderFieldRow(key, value, parentObject, onRefresh, onValueChange, dept
     const children = document.createElement("div");
     children.className = "frontmatter-children";
     children.appendChild(
-      renderValueEditor(value, currentType, parentObject, key, onRefresh, onValueChange, depth + 1),
+      renderValueEditor(
+        value,
+        currentType,
+        parentObject,
+        key,
+        onRefresh,
+        onValueChange,
+        depth + 1,
+        fieldPath,
+        mediaPickerContext,
+      ),
     );
     field.appendChild(children);
   }
@@ -314,6 +387,8 @@ function renderValueEditor(
   onRefresh,
   onValueChange,
   depth,
+  fieldPath,
+  mediaPickerContext,
 ) {
   if (type === "array") {
     const arrayValue = Array.isArray(value) ? value : [];
@@ -321,7 +396,14 @@ function renderValueEditor(
       parentContainer[parentKey] = arrayValue;
     }
 
-    return renderArrayEditor(parentContainer[parentKey], onRefresh, onValueChange, depth);
+    return renderArrayEditor(
+      parentContainer[parentKey],
+      onRefresh,
+      onValueChange,
+      depth,
+      fieldPath,
+      mediaPickerContext,
+    );
   }
 
   if (type === "object") {
@@ -335,13 +417,36 @@ function renderValueEditor(
       parentContainer[parentKey] = objectValue;
     }
 
-    return renderNestedObjectEditor(parentContainer[parentKey], onRefresh, onValueChange, depth);
+    return renderNestedObjectEditor(
+      parentContainer[parentKey],
+      onRefresh,
+      onValueChange,
+      depth,
+      fieldPath,
+      mediaPickerContext,
+    );
   }
 
-  return renderScalarEditor(value, type, parentContainer, parentKey, onValueChange);
+  return renderScalarEditor(
+    value,
+    type,
+    parentContainer,
+    parentKey,
+    onValueChange,
+    fieldPath,
+    mediaPickerContext,
+  );
 }
 
-function renderScalarEditor(value, type, parentContainer, parentKey, onValueChange) {
+function renderScalarEditor(
+  value,
+  type,
+  parentContainer,
+  parentKey,
+  onValueChange,
+  fieldPath = [],
+  mediaPickerContext = null,
+) {
   const wrapper = document.createElement("div");
   wrapper.className = "frontmatter-scalar";
 
@@ -377,19 +482,58 @@ function renderScalarEditor(value, type, parentContainer, parentKey, onValueChan
   });
 
   wrapper.appendChild(input);
+
+  if (
+    type === "string" &&
+    isBannerImageSrcField(fieldPath) &&
+    mediaPickerContext?.openMediaPicker
+  ) {
+    const pickButton = document.createElement("button");
+    pickButton.type = "button";
+    pickButton.className = "frontmatter-media-btn";
+    pickButton.innerHTML = icons.image;
+    pickButton.setAttribute("aria-label", "Choose image from media library");
+    pickButton.title = "Choose image";
+    pickButton.addEventListener("click", () => {
+      mediaPickerContext.setTarget((webPath) => {
+        input.value = webPath;
+        parentContainer[parentKey] = webPath;
+        onValueChange();
+      });
+      mediaPickerContext.openMediaPicker();
+    });
+    wrapper.appendChild(pickButton);
+  }
+
   return wrapper;
 }
 
-function renderNestedObjectEditor(objectValue, onRefresh, onValueChange, depth) {
+function renderNestedObjectEditor(
+  objectValue,
+  onRefresh,
+  onValueChange,
+  depth,
+  fieldPath,
+  mediaPickerContext,
+) {
   const wrapper = document.createElement("div");
   wrapper.className = "frontmatter-nested";
 
-  wrapper.appendChild(renderObjectEditor(objectValue, onRefresh, onValueChange, depth));
+  wrapper.appendChild(
+    renderObjectEditor(objectValue, onRefresh, onValueChange, depth, fieldPath, mediaPickerContext),
+  );
   wrapper.appendChild(renderAddFieldButton(objectValue, onRefresh));
   return wrapper;
 }
 
-function renderArrayEditor(arrayValue, onRefresh, onValueChange, depth) {
+function renderArrayEditor(
+  arrayValue,
+  onRefresh,
+  onValueChange,
+  depth,
+  fieldPath,
+  mediaPickerContext,
+) {
   const wrapper = document.createElement("div");
   wrapper.className = "frontmatter-array";
 
@@ -401,7 +545,18 @@ function renderArrayEditor(arrayValue, onRefresh, onValueChange, depth) {
   }
 
   arrayValue.forEach((item, index) => {
-    wrapper.appendChild(renderArrayItemRow(item, index, arrayValue, onRefresh, onValueChange, depth));
+    wrapper.appendChild(
+      renderArrayItemRow(
+        item,
+        index,
+        arrayValue,
+        onRefresh,
+        onValueChange,
+        depth,
+        fieldPath,
+        mediaPickerContext,
+      ),
+    );
   });
 
   const footer = document.createElement("div");
@@ -421,7 +576,16 @@ function renderArrayEditor(arrayValue, onRefresh, onValueChange, depth) {
   return wrapper;
 }
 
-function renderArrayItemRow(item, index, parentArray, onRefresh, onValueChange, depth) {
+function renderArrayItemRow(
+  item,
+  index,
+  parentArray,
+  onRefresh,
+  onValueChange,
+  depth,
+  fieldPath,
+  mediaPickerContext,
+) {
   const entry = document.createElement("div");
   entry.className = "frontmatter-array-entry";
 
@@ -470,7 +634,15 @@ function renderArrayItemRow(item, index, parentArray, onRefresh, onValueChange, 
     const valueHost = document.createElement("div");
     valueHost.className = "frontmatter-value-host";
     valueHost.appendChild(
-      renderScalarEditor(item, currentType, parentArray, index, onValueChange),
+      renderScalarEditor(
+        item,
+        currentType,
+        parentArray,
+        index,
+        onValueChange,
+        [...fieldPath, String(index)],
+        mediaPickerContext,
+      ),
     );
     row.append(marker, typeSelect, valueHost, removeButton);
   }
@@ -481,7 +653,17 @@ function renderArrayItemRow(item, index, parentArray, onRefresh, onValueChange, 
     const children = document.createElement("div");
     children.className = "frontmatter-children";
     children.appendChild(
-      renderValueEditor(item, currentType, parentArray, index, onRefresh, onValueChange, depth + 1),
+      renderValueEditor(
+        item,
+        currentType,
+        parentArray,
+        index,
+        onRefresh,
+        onValueChange,
+        depth + 1,
+        [...fieldPath, String(index)],
+        mediaPickerContext,
+      ),
     );
     entry.appendChild(children);
   }
