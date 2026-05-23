@@ -1,13 +1,24 @@
 {
   "name": "starmark",
   "version": "1.0.0",
-  "description": "Browse markdown content in local Astro sites",
+  "description": "Browse and edit markdown content in local Astro sites",
   "type": "module",
+  "bin": {
+    "starmark": "./bin/starmark.js"
+  },
+  "files": [
+    "bin",
+    "public",
+    "src"
+  ],
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "start": "node bin/starmark.js",
+    "dev": "node --watch bin/starmark.js"
   },
   "dependencies": {
     "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

@@ -8,10 +8,15 @@ import { buildInitialFileContent } from "./content-config.js";
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PACKAGE_ROOT = path.join(__dirname, "..");
+const PUBLIC_DIR = path.join(PACKAGE_ROOT, "public");
 
 const app = express();
 const PORT = process.env.PORT || 5748;
-const USER_INI_PATH = path.join(__dirname, "../local/user.ini");
+
+function getUserIniPath() {
+  return path.join(process.cwd(), ".starmark", "user.ini");
+}
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -23,9 +28,9 @@ const SKIP_DIRS = new Set([
 ]);
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "../public")));
+app.use(express.static(PUBLIC_DIR));
 
-const TOOLS_DIR = path.join(__dirname, "../public/tools");
+const TOOLS_DIR = path.join(PUBLIC_DIR, "tools");
 
 async function listToolbarTools() {
   let entries;
@@ -320,7 +325,7 @@ async function readFileNavOrder(filePath) {
 
 async function readSavedProjects() {
   try {
-    const contents = await fs.readFile(USER_INI_PATH, "utf8");
+    const contents = await fs.readFile(getUserIniPath(), "utf8");
     const paths = [];
 
     for (const line of contents.split("\n")) {
@@ -366,9 +371,16 @@ async function saveProject(folderPath) {
 
   const lines = ["[projects]", ...projects.map((project) => `path=${project.path}`)];
 
-  await fs.mkdir(path.dirname(USER_INI_PATH), { recursive: true });
-  await fs.writeFile(USER_INI_PATH, `${lines.join("\n")}\n`, "utf8");
+  const userIniPath = getUserIniPath();
+  await fs.mkdir(path.dirname(userIniPath), { recursive: true });
+  await fs.writeFile(userIniPath, `${lines.join("\n")}\n`, "utf8");
 }
+
+app.get("/api/config", (_req, res) => {
+  res.json({
+    defaultProjectPath: process.cwd(),
+  });
+});
 
 app.get("/api/projects", async (_req, res) => {
   const projects = await readSavedProjects();
@@ -1021,17 +1033,24 @@ app.get("/api/media/file", async (req, res) => {
   res.sendFile(resolved.target);
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`Starmark running at http://localhost:${PORT}`);
-});
+export function startServer(options = {}) {
+  const port = options.port ?? PORT;
 
-server.on("error", (err) => {
-  if (err.code === "EADDRINUSE") {
-    console.error(
-      `Port ${PORT} is already in use. Stop the other process or run with PORT=<number> pnpm start`,
-    );
-    process.exit(1);
-  }
+  const server = app.listen(port, () => {
+    console.log(`Starmark running at http://localhost:${port}`);
+    console.log(`Project folder: ${process.cwd()}`);
+  });
 
-  throw err;
-});
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `Port ${port} is already in use. Stop the other process or run with PORT=<number> starmark`,
+      );
+      process.exit(1);
+    }
+
+    throw err;
+  });
+
+  return server;
+}

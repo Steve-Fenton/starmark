@@ -2313,6 +2313,9 @@ async function scanFolder(pathValue = folderInput.value.trim()) {
 
     if (!response.ok) {
       showError(data.error ?? "Could not scan folder");
+      emptyState.hidden = false;
+      emptyState.textContent =
+        "Open Projects to choose a folder and scan for .md and .mdx files.";
       return;
     }
 
@@ -2321,6 +2324,9 @@ async function scanFolder(pathValue = folderInput.value.trim()) {
     projectsDialog.close();
   } catch {
     showError("Could not scan folder");
+    emptyState.hidden = false;
+    emptyState.textContent =
+      "Open Projects to choose a folder and scan for .md and .mdx files.";
   } finally {
     setBusy(false);
   }
@@ -2907,12 +2913,32 @@ initToolbar();
 syncTopBarHeight();
 window.addEventListener("resize", syncTopBarHeight);
 
-loadProjects().then(async () => {
+async function resolveInitialProjectPath() {
   const projectFromUrl = getProjectFromUrl();
+  if (projectFromUrl) {
+    return projectFromUrl;
+  }
+
+  try {
+    const response = await fetch("/api/config");
+    const data = await response.json();
+
+    if (response.ok && data.defaultProjectPath) {
+      return data.defaultProjectPath;
+    }
+  } catch {
+    // fall back to manual project selection
+  }
+
+  return null;
+}
+
+loadProjects().then(async () => {
+  const projectPath = await resolveInitialProjectPath();
   const fileFromUrl = getFileFromUrl();
 
-  if (projectFromUrl) {
-    await scanFolder(projectFromUrl);
+  if (projectPath) {
+    await scanFolder(projectPath);
 
     if (fileFromUrl) {
       const file = scannedFiles.find((entry) => entry.absolutePath === fileFromUrl);
