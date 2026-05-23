@@ -21,8 +21,15 @@ const projectsDialogClose = document.getElementById("projects-dialog-close");
 
 let projectButtons = [];
 let scannedFiles = [];
+let currentProjectPath = "";
+let expandedPaths = new Set();
 let currentEditFile = null;
 let currentEditFrontmatter = null;
+
+const SOURCE_ROOTS = {
+  content: "src/content",
+  pages: "src/pages",
+};
 
 const EDIT_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
   <path fill="currentColor" d="M11.5 1.5a1.4 1.4 0 0 1 2 2L5.7 11.3l-2.8.7.7-2.8zM10.5 2.5 3 10v1h1l7.5-7.5z"/>
@@ -97,15 +104,206 @@ function filterFiles(files, query) {
   });
 }
 
+function loadExpandedPaths(projectPath) {
+  expandedPaths = new Set();
+
+  if (!projectPath) {
+    return;
+  }
+
+  try {
+    const stored = localStorage.getItem(`starmark:expanded:${projectPath}`);
+    if (stored) {
+      expandedPaths = new Set(JSON.parse(stored));
+    }
+  } catch {
+    expandedPaths = new Set();
+  }
+}
+
+function saveExpandedPaths() {
+  if (!currentProjectPath) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      `starmark:expanded:${currentProjectPath}`,
+      JSON.stringify([...expandedPaths]),
+    );
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function ensureDefaultExpandedRoots(tree) {
+  if (expandedPaths.size > 0) {
+    return;
+  }
+
+  for (const node of tree) {
+    if (node.type === "folder") {
+      expandedPaths.add(node.path);
+    }
+  }
+}
+
+function collectFolderPaths(nodes, paths = []) {
+  for (const node of nodes) {
+    if (node.type !== "folder") {
+      continue;
+    }
+
+    paths.push(node.path);
+
+    if (node.children.length > 0) {
+      collectFolderPaths(node.children, paths);
+    }
+  }
+
+  return paths;
+}
+
+function countTreeContents(nodes) {
+  let folders = 0;
+  let files = 0;
+
+  for (const node of nodes) {
+    if (node.type === "folder") {
+      folders += 1;
+      const nested = countTreeContents(node.children);
+      folders += nested.folders;
+      files += nested.files;
+    } else {
+      files += 1;
+    }
+  }
+
+  return { folders, files };
+}
+
+function buildFileTree(files) {
+  const roots = new Map();
+
+  function ensureFolder(folderMap, folderPath, name, source) {
+    if (!folderMap.has(folderPath)) {
+      folderMap.set(folderPath, {
+        type: "folder",
+        name,
+        path: folderPath,
+        source,
+        childFolders: new Map(),
+        files: [],
+      });
+    }
+
+    return folderMap.get(folderPath);
+  }
+
+  function folderMapToNodes(folderMap) {
+    const folders = [...folderMap.values()].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+
+    return folders.map((folder) => ({
+      type: "folder",
+      name: folder.name,
+      path: folder.path,
+      source: folder.source,
+      children: [
+        ...folderMapToNodes(folder.childFolders),
+        ...folder.files.sort((a, b) => a.name.localeCompare(b.name)),
+      ],
+    }));
+  }
+
+  for (const file of files) {
+    let rootPath;
+    let segments;
+
+    if (file.source === "content" || file.source === "pages") {
+      rootPath = SOURCE_ROOTS[file.source];
+      const prefix = `${rootPath}/`;
+      const remainder = file.relativePath.startsWith(prefix)
+        ? file.relativePath.slice(prefix.length)
+        : file.relativePath.replace(/^src\/(content|pages)\/?/, "");
+      segments = remainder.split("/").filter(Boolean);
+    } else {
+      segments = file.relativePath.split("/").filter(Boolean);
+      rootPath = "";
+    }
+
+    const rootLabel = rootPath || "project";
+    const root = ensureFolder(roots, rootPath || "__project__", rootLabel, file.source);
+    let current = root;
+    let currentPath = rootPath;
+
+    if (segments.length === 0) {
+      continue;
+    }
+
+    if (segments.length === 1) {
+      root.files.push({
+        type: "file",
+        name: segments[0],
+        path: file.relativePath,
+        file,
+      });
+      continue;
+    }
+
+    for (let index = 0; index < segments.length - 1; index += 1) {
+      currentPath = currentPath ? `${currentPath}/${segments[index]}` : segments[index];
+      current = ensureFolder(
+        current.childFolders,
+        currentPath,
+        segments[index],
+        file.source,
+      );
+    }
+
+    const fileName = segments[segments.length - 1];
+    current.files.push({
+      type: "file",
+      name: fileName,
+      path: file.relativePath,
+      file,
+    });
+  }
+
+  const sourceOrder = { content: 0, pages: 1, project: 2 };
+
+  return [...roots.values()]
+    .sort((a, b) => {
+      const sourceDiff = sourceOrder[a.source] - sourceOrder[b.source];
+      if (sourceDiff !== 0) {
+        return sourceDiff;
+      }
+
+      return a.name.localeCompare(b.name);
+    })
+    .map((root) => ({
+      type: "folder",
+      name: root.name,
+      path: root.path === "__project__" ? "" : root.path,
+      source: root.source,
+      children: [
+        ...folderMapToNodes(root.childFolders),
+        ...root.files.sort((a, b) => a.name.localeCompare(b.name)),
+      ],
+    }));
+}
+
 function updateFileResults() {
-  const query = fileSearch.value;
+  const query = fileSearch.value.trim();
   const filteredFiles = filterFiles(scannedFiles, query);
+  const isSearching = query.length > 0;
 
   fileCount.textContent = formatFileCount(filteredFiles.length, scannedFiles.length);
 
   if (filteredFiles.length === 0) {
     emptyState.hidden = false;
-    emptyState.textContent = query.trim()
+    emptyState.textContent = isSearching
       ? "No files match your search."
       : "No .md or .mdx files found in this folder.";
     fileList.hidden = true;
@@ -113,9 +311,19 @@ function updateFileResults() {
     return;
   }
 
+  const tree = buildFileTree(filteredFiles);
+
+  if (!isSearching) {
+    ensureDefaultExpandedRoots(tree);
+  } else {
+    for (const folderPath of collectFolderPaths(tree)) {
+      expandedPaths.add(folderPath);
+    }
+  }
+
   emptyState.hidden = true;
   fileList.hidden = false;
-  renderFiles(filteredFiles);
+  renderFileTree(tree, { isSearching });
 }
 
 function getProjectFromUrl() {
@@ -298,54 +506,113 @@ function formatScanInfo(scanTargets) {
   return `Scanning ${labels.join(" and ")}`;
 }
 
-function renderFiles(files) {
-  fileList.innerHTML = "";
+function createFileRow(file, depth) {
+  const item = document.createElement("li");
+  item.className = "tree-file";
+  item.style.setProperty("--depth", depth);
 
-  for (const file of files) {
-    const item = document.createElement("li");
+  const extBadge = document.createElement("span");
+  extBadge.className = `badge ${file.extension}`;
+  extBadge.textContent = file.extension;
 
-    const badges = document.createElement("div");
-    badges.className = "badges";
+  const name = document.createElement("span");
+  name.className = "file-name";
+  name.textContent = file.name;
+  name.title = file.relativePath;
 
+  const actions = document.createElement("div");
+  actions.className = "file-actions";
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "edit-btn";
+  editBtn.innerHTML = EDIT_ICON;
+  editBtn.title = `Edit ${file.name}`;
+  editBtn.setAttribute("aria-label", `Edit ${file.name}`);
+  editBtn.addEventListener("click", () => openEditView(file));
+
+  actions.append(editBtn);
+  item.append(extBadge, name, actions);
+  return item;
+}
+
+function createFolderRow(node, depth, { isSearching }) {
+  const item = document.createElement("li");
+  item.className = "tree-folder";
+  item.style.setProperty("--depth", depth);
+
+  const details = document.createElement("details");
+  details.open = isSearching || expandedPaths.has(node.path);
+
+  details.addEventListener("toggle", () => {
+    if (details.open) {
+      expandedPaths.add(node.path);
+    } else {
+      expandedPaths.delete(node.path);
+    }
+    saveExpandedPaths();
+  });
+
+  const summary = document.createElement("summary");
+  summary.className = "tree-folder-header";
+
+  const label = document.createElement("span");
+  label.className = "tree-folder-name";
+  label.textContent = depth === 0 ? (node.path || node.name) : node.name;
+  summary.append(label);
+
+  if (depth === 0 && node.source) {
     const sourceBadge = document.createElement("span");
-    sourceBadge.className = `badge source ${file.source}`;
-    sourceBadge.textContent = file.source;
+    sourceBadge.className = `badge source ${node.source}`;
+    sourceBadge.textContent = node.source;
+    summary.append(sourceBadge);
+  }
 
-    const extBadge = document.createElement("span");
-    extBadge.className = `badge ${file.extension}`;
-    extBadge.textContent = file.extension;
+  const { folders: folderCount, files: nestedFileCount } = countTreeContents(node.children);
+  const countParts = [];
 
-    badges.append(sourceBadge, extBadge);
+  if (folderCount > 0) {
+    countParts.push(folderCount === 1 ? "1 folder" : `${folderCount} folders`);
+  }
 
-    const meta = document.createElement("div");
-    meta.className = "file-meta";
+  if (nestedFileCount > 0) {
+    countParts.push(nestedFileCount === 1 ? "1 file" : `${nestedFileCount} files`);
+  }
 
-    const name = document.createElement("div");
-    name.className = "file-name";
-    name.textContent = file.name;
+  if (countParts.length > 0) {
+    const count = document.createElement("span");
+    count.className = "tree-folder-count";
+    count.textContent = countParts.join(", ");
+    summary.append(count);
+  }
 
-    const relativePath = document.createElement("div");
-    relativePath.className = "file-path";
-    relativePath.textContent = file.relativePath;
-    relativePath.title = file.absolutePath;
+  details.append(summary);
 
-    meta.append(name, relativePath);
-    item.append(badges, meta);
+  if (node.children.length > 0) {
+    const children = document.createElement("ul");
+    children.className = "tree-children";
 
-    const actions = document.createElement("div");
-    actions.className = "file-actions";
+    for (const child of node.children) {
+      if (child.type === "folder") {
+        children.append(createFolderRow(child, depth + 1, { isSearching }));
+      } else {
+        children.append(createFileRow(child.file, depth + 1));
+      }
+    }
 
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "edit-btn";
-    editBtn.innerHTML = EDIT_ICON;
-    editBtn.title = `Edit ${file.name}`;
-    editBtn.setAttribute("aria-label", `Edit ${file.name}`);
-    editBtn.addEventListener("click", () => openEditView(file));
+    details.append(children);
+  }
 
-    actions.append(editBtn);
-    item.append(actions);
-    fileList.append(item);
+  item.append(details);
+  return item;
+}
+
+function renderFileTree(tree, { isSearching = false } = {}) {
+  fileList.innerHTML = "";
+  fileList.className = "file-tree";
+
+  for (const node of tree) {
+    fileList.append(createFolderRow(node, 0, { isSearching }));
   }
 }
 
@@ -373,7 +640,9 @@ async function scanFolder(pathValue = folderInput.value.trim()) {
     }
 
     folderInput.value = data.projectPath;
+    currentProjectPath = data.projectPath;
     setProjectInUrl(data.projectPath);
+    loadExpandedPaths(currentProjectPath);
 
     scanInfo.hidden = false;
     scanInfo.textContent = formatScanInfo(data.scanTargets);

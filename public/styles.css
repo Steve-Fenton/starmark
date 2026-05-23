@@ -284,13 +284,96 @@ button:disabled {
   color: var(--muted);
 }
 
-.file-list {
+.file-list,
+.file-tree {
   list-style: none;
   margin: 0;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
+}
+
+.file-tree > .tree-folder > details > summary {
+  border-top: none;
+}
+
+.tree-folder details {
+  display: block;
+}
+
+.tree-folder-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  padding-left: calc(1rem + var(--depth, 0) * 1.15rem);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  list-style: none;
+}
+
+.tree-folder-header:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.tree-folder-header::-webkit-details-marker {
+  display: none;
+}
+
+.tree-folder-header::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+details[open] > .tree-folder-header::before {
+  transform: rotate(45deg);
+}
+
+.tree-folder-name {
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-folder-count {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.tree-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree-file {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.65rem 1rem;
+  padding-left: calc(1rem + (var(--depth, 0) + 1) * 1.15rem + 1.1rem);
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
+}
+
+.tree-file .file-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .file-list li {
