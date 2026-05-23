@@ -534,6 +534,11 @@ details[open] > .tree-folder-header::before {
   color: var(--muted);
 }
 
+.toolbar-btn svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 .toolbar-btn:hover:not(:disabled) {
   border-color: var(--border);
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
@@ -884,6 +889,11 @@ details[open] > .tree-folder-header::before {
 .media-folder-icon {
   flex-shrink: 0;
   color: var(--accent);
+}
+
+.media-folder-icon svg,
+.media-up-btn svg {
+  display: block;
 }
 
 .media-images {

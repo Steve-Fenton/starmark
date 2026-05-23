@@ -24,6 +24,27 @@ const SKIP_DIRS = new Set([
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
 
+const TOOLS_DIR = path.join(__dirname, "../public/tools");
+
+async function listToolbarTools() {
+  let entries;
+  try {
+    entries = await fs.readdir(TOOLS_DIR, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".js"))
+    .map((entry) => entry.name.replace(/\.js$/, ""))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+app.get("/api/tools", async (_req, res) => {
+  const tools = await listToolbarTools();
+  res.json({ tools });
+});
+
 async function pickFolderNative() {
   if (process.platform === "darwin") {
     const { stdout } = await execFileAsync("osascript", [

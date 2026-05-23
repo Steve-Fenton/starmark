@@ -13,37 +13,12 @@ const editBackBtn = document.getElementById("edit-back-btn");
 const editFileName = document.getElementById("edit-file-name");
 const editFilePath = document.getElementById("edit-file-path");
 const markdownEditor = document.getElementById("markdown-editor");
+const editToolbar = document.getElementById("edit-toolbar");
 const projectsSection = document.getElementById("projects-section");
 const projectList = document.getElementById("project-list");
 const projectsMenuBtn = document.getElementById("projects-menu-btn");
 const projectsDialog = document.getElementById("projects-dialog");
 const projectsDialogClose = document.getElementById("projects-dialog-close");
-const linkBtn = document.getElementById("link-btn");
-const boldBtn = document.getElementById("bold-btn");
-const italicBtn = document.getElementById("italic-btn");
-const strikethroughBtn = document.getElementById("strikethrough-btn");
-const linkDialog = document.getElementById("link-dialog");
-const linkDialogClose = document.getElementById("link-dialog-close");
-const linkForm = document.getElementById("link-form");
-const linkTextInput = document.getElementById("link-text");
-const linkUrlInput = document.getElementById("link-url");
-const imageBtn = document.getElementById("image-btn");
-const mediaDialog = document.getElementById("media-dialog");
-const mediaDialogClose = document.getElementById("media-dialog-close");
-const mediaUpBtn = document.getElementById("media-up-btn");
-const mediaBreadcrumb = document.getElementById("media-breadcrumb");
-const mediaStatus = document.getElementById("media-status");
-const mediaFolders = document.getElementById("media-folders");
-const mediaImages = document.getElementById("media-images");
-const mediaBrowserView = document.getElementById("media-browser-view");
-const imageForm = document.getElementById("image-form");
-const imageSelectedName = document.getElementById("image-selected-name");
-const imageAltInput = document.getElementById("image-alt");
-const imageLazyInput = document.getElementById("image-lazy");
-const imageCaptionInput = document.getElementById("image-caption");
-const imageBackBtn = document.getElementById("image-back-btn");
-const undoBtn = document.getElementById("undo-btn");
-const redoBtn = document.getElementById("redo-btn");
 const topBar = document.querySelector(".top-bar");
 
 let projectButtons = [];
@@ -52,14 +27,12 @@ let currentProjectPath = "";
 let expandedPaths = new Set();
 let currentEditFile = null;
 let currentEditFrontmatter = null;
-let savedLinkRange = null;
-let savedEditorCaret = null;
-let currentMediaDir = "img";
-let pendingImage = null;
+let pendingEditorCaret = null;
 let editorHistory = [];
 let editorHistoryIndex = -1;
 let editorHistoryDebounce = null;
 let isApplyingEditorHistory = false;
+const historyChangeListeners = [];
 
 const HISTORY_DEBOUNCE_MS = 400;
 const MAX_EDITOR_HISTORY = 100;
@@ -294,34 +267,12 @@ function setCaretOffsetInElement(element, offset) {
   selection.addRange(range);
 }
 
-function updateUndoRedoShortcutLabels() {
-  const isMac = navigator.platform.toUpperCase().includes("MAC");
-  undoBtn.title = isMac ? "Undo (⌘Z)" : "Undo (Ctrl+Z)";
-  redoBtn.title = isMac ? "Redo (⌘⇧Z)" : "Redo (Ctrl+Shift+Z)";
-}
-
 function syncTopBarHeight() {
   if (topBar) {
     document.documentElement.style.setProperty("--top-bar-height", `${topBar.offsetHeight}px`);
   }
 }
 
-function saveEditorSelection() {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    savedLinkRange = null;
-    return "";
-  }
-
-  const range = selection.getRangeAt(0);
-  if (!markdownEditor.contains(range.commonAncestorContainer)) {
-    savedLinkRange = null;
-    return "";
-  }
-
-  savedLinkRange = range.cloneRange();
-  return range.toString();
-}
 
 function wrapEditorSelection(wrapper) {
   const selection = window.getSelection();
@@ -351,24 +302,15 @@ function wrapEditorSelection(wrapper) {
   return true;
 }
 
-function attachToolbarButton(button, handler) {
-  button.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-  });
-  button.addEventListener("click", handler);
-}
-
 function saveEditorCaret() {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) {
-    savedEditorCaret = null;
-    return;
+    return null;
   }
 
   const range = selection.getRangeAt(0);
   if (!markdownEditor.contains(range.commonAncestorContainer)) {
-    savedEditorCaret = null;
-    return;
+    return null;
   }
 
   const lineElements = getEditorLineElements();
@@ -381,12 +323,11 @@ function saveEditorCaret() {
 
     const offset = getCaretOffsetInElement(element);
     if (offset !== null) {
-      savedEditorCaret = { lineIndex, offset };
-      return;
+      return { lineIndex, offset };
     }
   }
 
-  savedEditorCaret = { lineIndex: lineElements.length, offset: 0 };
+  return { lineIndex: lineElements.length, offset: 0 };
 }
 
 function getEditorLineElements() {
@@ -455,9 +396,19 @@ function createEditorHistorySnapshot() {
   };
 }
 
+function notifyHistoryChange() {
+  const state = {
+    canUndo: editorHistoryIndex > 0,
+    canRedo: editorHistoryIndex < editorHistory.length - 1,
+  };
+
+  for (const listener of historyChangeListeners) {
+    listener(state);
+  }
+}
+
 function updateUndoRedoButtons() {
-  undoBtn.disabled = editorHistoryIndex <= 0;
-  redoBtn.disabled = editorHistoryIndex >= editorHistory.length - 1;
+  notifyHistoryChange();
 }
 
 function resetEditorHistory(content) {
@@ -546,13 +497,13 @@ function runEditorHistoryAction(action) {
   flushEditorHistory();
 }
 
-function insertMarkdownAtCaret(markdown) {
-  if (!savedEditorCaret) {
+function insertMarkdownAtCaret(markdown, caret = pendingEditorCaret) {
+  if (!caret) {
     return false;
   }
 
   const lines = getEditorLines();
-  const { lineIndex, offset } = savedEditorCaret;
+  const { lineIndex, offset } = caret;
   const currentLine = lines[lineIndex] ?? "";
   const before = currentLine.slice(0, offset);
   const after = currentLine.slice(offset);
@@ -576,282 +527,10 @@ function insertMarkdownAtCaret(markdown) {
     setCaretOffsetInElement(caretElement, insertedLines[insertedLines.length - 1].length);
   }
 
-  savedEditorCaret = null;
+  pendingEditorCaret = null;
   flushEditorHistory();
   markdownEditor.focus();
   return true;
-}
-
-function escapeMarkdownAttribute(value) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function filenameToAlt(filename) {
-  const base = filename.replace(/\.[^.]+$/, "");
-  return base
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function buildFigureMarkdown(webPath, { alt, lazyLoad, caption }) {
-  const safeAlt = escapeMarkdownAttribute(alt);
-  const attributes = [`src="${webPath}"`, `alt="${safeAlt}"`];
-
-  if (lazyLoad) {
-    attributes.push('loading="lazy"');
-  }
-
-  const lines = [":::figure", "", `:img{ ${attributes.join(" ")} }`, ""];
-
-  const trimmedCaption = caption.trim();
-  if (trimmedCaption) {
-    lines.push(`::figcaption[${trimmedCaption}]`, "");
-  }
-
-  lines.push(":::");
-  return lines.join("\n");
-}
-
-function insertImageFigure(webPath, { alt, lazyLoad, caption }) {
-  return insertMarkdownAtCaret(buildFigureMarkdown(webPath, { alt, lazyLoad, caption }));
-}
-
-function showMediaBrowserView() {
-  pendingImage = null;
-  mediaBrowserView.hidden = false;
-  mediaBrowserView.setAttribute("aria-hidden", "false");
-  imageForm.hidden = true;
-  imageForm.setAttribute("aria-hidden", "true");
-}
-
-function showMediaDetailsView(image) {
-  pendingImage = image;
-  imageSelectedName.textContent = image.name;
-  imageAltInput.value = filenameToAlt(image.name);
-  imageLazyInput.checked = true;
-  imageCaptionInput.value = "";
-  mediaBrowserView.hidden = true;
-  mediaBrowserView.setAttribute("aria-hidden", "true");
-  imageForm.hidden = false;
-  imageForm.setAttribute("aria-hidden", "false");
-  imageAltInput.focus();
-}
-
-function submitImageForm(event) {
-  event.preventDefault();
-
-  if (!pendingImage) {
-    return;
-  }
-
-  flushEditorHistory();
-
-  if (
-    insertImageFigure(pendingImage.webPath, {
-      alt: imageAltInput.value,
-      lazyLoad: imageLazyInput.checked,
-      caption: imageCaptionInput.value,
-    })
-  ) {
-    mediaDialog.close();
-  }
-}
-
-function formatMediaDirLabel(relativeDir) {
-  return relativeDir ? relativeDir.replace(/\//g, " / ") : "public";
-}
-
-function getMediaFileUrl(relativePath) {
-  return `/api/media/file?project=${encodeURIComponent(currentProjectPath)}&path=${encodeURIComponent(relativePath)}`;
-}
-
-function setMediaStatus(message, { isError = false } = {}) {
-  mediaStatus.hidden = !message;
-  mediaStatus.textContent = message ?? "";
-  mediaStatus.classList.toggle("is-error", Boolean(isError && message));
-}
-
-function renderMediaBreadcrumb(currentDir) {
-  mediaBreadcrumb.replaceChildren();
-
-  const segments = currentDir ? currentDir.split("/") : [];
-  const crumbs = [{ label: "public", dir: "" }];
-
-  for (let index = 0; index < segments.length; index += 1) {
-    crumbs.push({
-      label: segments[index],
-      dir: segments.slice(0, index + 1).join("/"),
-    });
-  }
-
-  crumbs.forEach((crumb, index) => {
-    if (index > 0) {
-      const separator = document.createElement("span");
-      separator.className = "media-breadcrumb-separator";
-      separator.textContent = "/";
-      separator.setAttribute("aria-hidden", "true");
-      mediaBreadcrumb.append(separator);
-    }
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = crumb.label;
-    button.addEventListener("click", () => {
-      loadMediaDirectory(crumb.dir);
-    });
-    mediaBreadcrumb.append(button);
-  });
-}
-
-function renderMediaDirectory(data) {
-  currentMediaDir = data.currentDir;
-  mediaUpBtn.disabled = data.parentDir === null;
-  mediaUpBtn.onclick = () => {
-    if (data.parentDir !== null) {
-      loadMediaDirectory(data.parentDir === "" ? "" : data.parentDir);
-    }
-  };
-
-  renderMediaBreadcrumb(data.currentDir);
-  mediaFolders.replaceChildren();
-  mediaImages.replaceChildren();
-
-  for (const folder of data.folders) {
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "media-folder-btn";
-    button.innerHTML = `<svg class="media-folder-icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1.5 3.75A1.25 1.25 0 0 1 2.75 2.5h3.098l1.2 1.2h6.252A1.25 1.25 0 0 1 14.5 5.15v7.1a1.25 1.25 0 0 1-1.25 1.25h-10A1.25 1.25 0 0 1 2 12.15v-8.4Z"/></svg><span>${folder.name}</span>`;
-    button.addEventListener("click", () => {
-      loadMediaDirectory(folder.dir);
-    });
-    item.append(button);
-    mediaFolders.append(item);
-  }
-
-  for (const image of data.images) {
-    const relativePath = image.webPath.replace(/^\//, "");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "media-image-btn";
-    button.title = image.name;
-
-    const preview = document.createElement("img");
-    preview.className = "media-image-preview";
-    preview.src = getMediaFileUrl(relativePath);
-    preview.alt = "";
-    preview.loading = "lazy";
-
-    const label = document.createElement("span");
-    label.className = "media-image-name";
-    label.textContent = image.name;
-
-    button.append(preview, label);
-    button.addEventListener("click", () => {
-      showMediaDetailsView(image);
-    });
-
-    mediaImages.append(button);
-  }
-
-  if (data.folders.length === 0 && data.images.length === 0) {
-    setMediaStatus(`No folders or images in ${formatMediaDirLabel(data.currentDir)}.`);
-  } else {
-    setMediaStatus("");
-  }
-}
-
-async function loadMediaDirectory(relativeDir = "img") {
-  if (!currentProjectPath) {
-    setMediaStatus("Open and scan a project first.", { isError: true });
-    mediaFolders.replaceChildren();
-    mediaImages.replaceChildren();
-    mediaUpBtn.disabled = true;
-    mediaBreadcrumb.replaceChildren();
-    return;
-  }
-
-  setMediaStatus("Loading…");
-
-  try {
-    const params = new URLSearchParams({
-      project: currentProjectPath,
-      dir: relativeDir,
-    });
-    const response = await fetch(`/api/media?${params.toString()}`);
-    const data = await response.json();
-
-    if (!response.ok) {
-      setMediaStatus(data.error ?? "Could not load media", { isError: true });
-      mediaFolders.replaceChildren();
-      mediaImages.replaceChildren();
-      mediaUpBtn.disabled = true;
-      mediaBreadcrumb.replaceChildren();
-      return;
-    }
-
-    renderMediaDirectory(data);
-  } catch {
-    setMediaStatus("Could not load media", { isError: true });
-    mediaFolders.replaceChildren();
-    mediaImages.replaceChildren();
-    mediaUpBtn.disabled = true;
-    mediaBreadcrumb.replaceChildren();
-  }
-}
-
-function openMediaDialog() {
-  saveEditorCaret();
-  showMediaBrowserView();
-  mediaDialog.showModal();
-  loadMediaDirectory("img");
-}
-
-function insertMarkdownLinkAtSelection(linkText, url) {
-  const trimmedUrl = url.trim();
-  if (!savedLinkRange || !trimmedUrl) {
-    return false;
-  }
-
-  const markdown = `[${linkText}](${trimmedUrl})`;
-  savedLinkRange.deleteContents();
-  const textNode = document.createTextNode(markdown);
-  savedLinkRange.insertNode(textNode);
-
-  const selection = window.getSelection();
-  const range = document.createRange();
-  range.setStartAfter(textNode);
-  range.collapse(true);
-  selection.removeAllRanges();
-  selection.addRange(range);
-
-  savedLinkRange = null;
-  reevaluateMarkdownEditorLines();
-  flushEditorHistory();
-  markdownEditor.focus();
-  return true;
-}
-
-function openLinkDialog() {
-  const selectedText = saveEditorSelection();
-  linkTextInput.value = selectedText;
-  linkUrlInput.value = "";
-  linkDialog.showModal();
-  linkUrlInput.focus();
-}
-
-function submitLinkDialog(event) {
-  event.preventDefault();
-
-  flushEditorHistory();
-
-  if (!insertMarkdownLinkAtSelection(linkTextInput.value, linkUrlInput.value)) {
-    linkUrlInput.focus();
-    return;
-  }
-
-  linkDialog.close();
 }
 
 function applyLineDecorations(element, lineState) {
@@ -1633,84 +1312,66 @@ markdownEditor.addEventListener("keydown", (event) => {
   }
 });
 
-attachToolbarButton(undoBtn, undoEditorChange);
-attachToolbarButton(redoBtn, redoEditorChange);
+const editorApi = {
+  editor: markdownEditor,
+  getProjectPath: () => currentProjectPath,
+  undo: undoEditorChange,
+  redo: redoEditorChange,
+  runHistoryAction: runEditorHistoryAction,
+  wrapSelection: wrapEditorSelection,
+  flushHistory: flushEditorHistory,
+  reevaluateLines: reevaluateMarkdownEditorLines,
+  focus: () => markdownEditor.focus(),
+  saveCaret: saveEditorCaret,
+  setPendingCaret: (caret) => {
+    pendingEditorCaret = caret;
+  },
+  clearPendingCaret: () => {
+    pendingEditorCaret = null;
+  },
+  insertAtCaret: insertMarkdownAtCaret,
+  onHistoryChange(listener) {
+    historyChangeListeners.push(listener);
+    listener({
+      canUndo: editorHistoryIndex > 0,
+      canRedo: editorHistoryIndex < editorHistory.length - 1,
+    });
+  },
+};
 
-attachToolbarButton(boldBtn, () => {
-  runEditorHistoryAction(() => {
-    wrapEditorSelection("**");
-  });
-});
+async function initToolbar() {
+  const response = await fetch("/api/tools");
+  const { tools } = await response.json();
 
-attachToolbarButton(italicBtn, () => {
-  runEditorHistoryAction(() => {
-    wrapEditorSelection("*");
-  });
-});
+  let currentGroup = null;
+  let groupEl = null;
 
-attachToolbarButton(strikethroughBtn, () => {
-  runEditorHistoryAction(() => {
-    wrapEditorSelection("~~");
-  });
-});
+  for (const toolId of tools) {
+    const module = await import(`/tools/${toolId}.js`);
+    const tool = module.default;
 
-attachToolbarButton(linkBtn, openLinkDialog);
+    if (tool.group !== currentGroup) {
+      if (currentGroup !== null) {
+        const separator = document.createElement("div");
+        separator.className = "toolbar-separator";
+        separator.setAttribute("role", "separator");
+        separator.setAttribute("aria-orientation", "vertical");
+        editToolbar.append(separator);
+      }
 
-linkForm.addEventListener("submit", submitLinkDialog);
+      currentGroup = tool.group;
+      groupEl = document.createElement("div");
+      groupEl.className = "toolbar-group";
+      editToolbar.append(groupEl);
+    }
 
-linkDialogClose.addEventListener("click", () => {
-  linkDialog.close();
-});
-
-linkDialog.addEventListener("click", (event) => {
-  if (event.target === linkDialog) {
-    linkDialog.close();
+    tool.mount(groupEl, editorApi);
   }
-});
+}
 
-linkDialog.addEventListener("close", () => {
-  savedLinkRange = null;
-});
-
-linkTextInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    linkUrlInput.focus();
-  }
-});
-
-attachToolbarButton(imageBtn, openMediaDialog);
-
-mediaDialogClose.addEventListener("click", () => {
-  mediaDialog.close();
-});
-
-mediaDialog.addEventListener("click", (event) => {
-  if (event.target === mediaDialog) {
-    mediaDialog.close();
-  }
-});
-
-mediaDialog.addEventListener("close", () => {
-  savedEditorCaret = null;
-  showMediaBrowserView();
-});
-
-imageForm.addEventListener("submit", submitImageForm);
-
-imageBackBtn.addEventListener("click", () => {
-  showMediaBrowserView();
-});
-
-imageAltInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    imageCaptionInput.focus();
-  }
-});
+initToolbar();
 
 syncTopBarHeight();
-updateUndoRedoShortcutLabels();
 window.addEventListener("resize", syncTopBarHeight);
 
 loadProjects().then(async () => {
