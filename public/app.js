@@ -574,6 +574,40 @@ function runEditorHistoryAction(action) {
   flushEditorHistory();
 }
 
+function insertParagraphAtEditorCaret() {
+  if (markdownEditor.dataset.loading || !currentEditFile) {
+    return;
+  }
+
+  normalizeEditorDom();
+  const caret = getEditorCaretSnapshot();
+  if (!caret) {
+    return;
+  }
+
+  const lines = getEditorLines();
+  const { lineIndex, offset } = caret;
+  const currentLine = lines[lineIndex] ?? "";
+  const before = currentLine.slice(0, offset);
+  const after = currentLine.slice(offset);
+  const nextLines = [
+    ...lines.slice(0, lineIndex),
+    before,
+    after,
+    ...lines.slice(lineIndex + 1),
+  ];
+
+  renderMarkdownEditor(nextLines.join("\n"));
+
+  const lineElements = getEditorLineElements();
+  const nextLineElement = lineElements[lineIndex + 1];
+  if (nextLineElement) {
+    setCaretOffsetInElement(nextLineElement, 0);
+  }
+
+  scheduleEditorHistoryCommit();
+}
+
 function insertMarkdownAtCaret(markdown, caret = pendingEditorCaret) {
   if (!caret) {
     return false;
@@ -3281,7 +3315,21 @@ markdownEditor.addEventListener("beforeinput", (event) => {
   }
 });
 
+markdownEditor.addEventListener("focus", () => {
+  try {
+    document.execCommand("defaultParagraphSeparator", false, "p");
+  } catch {
+    // Browser may not support defaultParagraphSeparator.
+  }
+});
+
 markdownEditor.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    insertParagraphAtEditorCaret();
+    return;
+  }
+
   const isMod = event.metaKey || event.ctrlKey;
   if (!isMod) {
     return;
