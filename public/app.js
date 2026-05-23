@@ -1722,7 +1722,7 @@ async function saveCurrentFile() {
 function updateFrontmatterPanel(frontmatter) {
   frontmatterEditor.setValue(frontmatter ?? "");
   frontmatterPanel.hidden = false;
-  frontmatterPanel.open = localStorage.getItem("starmark:frontmatter-panel-open") === "true";
+  frontmatterPanel.open = false;
 }
 
 function handleFrontmatterInput() {
@@ -1733,10 +1733,6 @@ function handleFrontmatterInput() {
   currentEditFrontmatter = normalizeFrontmatter(frontmatterEditor.getValue());
   updateEditHeader(currentEditFile, currentEditFrontmatter);
 }
-
-frontmatterPanel.addEventListener("toggle", () => {
-  localStorage.setItem("starmark:frontmatter-panel-open", frontmatterPanel.open ? "true" : "false");
-});
 
 function showEditView() {
   listView.hidden = true;
