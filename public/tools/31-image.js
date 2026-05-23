@@ -1,6 +1,18 @@
 import { attachToolbarButton, createToolbarButton } from "../toolkit.js";
 import { icons } from "../icons.js";
 
+const IMAGE_UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.svg,.avif,.ico,image/*";
+const IMAGE_UPLOAD_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".svg",
+  ".avif",
+  ".ico",
+]);
+
 let pendingImage = null;
 
 function escapeMarkdownAttribute(value) {
@@ -51,11 +63,18 @@ function createMediaDialog(api) {
         </button>
         <nav class="media-breadcrumb" aria-label="Media path"></nav>
       </div>
-      <p class="media-status" hidden></p>
-      <div class="media-contents">
-        <ul class="media-folders"></ul>
-        <div class="media-images"></div>
+      <div class="media-search">
+        <input
+          type="search"
+          class="media-search-input"
+          placeholder="Search by file name"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Search images by file name"
+        />
       </div>
+      <p class="media-status" hidden></p>
+      <div class="media-grid"></div>
     </div>
     <form class="image-form" hidden aria-hidden="true">
       <p class="image-selected-name"></p>
@@ -81,9 +100,9 @@ function createMediaDialog(api) {
   const closeBtn = dialog.querySelector(".media-dialog-close");
   const mediaUpBtn = dialog.querySelector(".media-up-btn");
   const mediaBreadcrumb = dialog.querySelector(".media-breadcrumb");
+  const mediaSearchInput = dialog.querySelector(".media-search-input");
   const mediaStatus = dialog.querySelector(".media-status");
-  const mediaFolders = dialog.querySelector(".media-folders");
-  const mediaImages = dialog.querySelector(".media-images");
+  const mediaGrid = dialog.querySelector(".media-grid");
   const mediaBrowserView = dialog.querySelector(".media-browser");
   const imageForm = dialog.querySelector(".image-form");
   const imageSelectedName = dialog.querySelector(".image-selected-name");
@@ -92,12 +111,116 @@ function createMediaDialog(api) {
   const imageCaptionInput = dialog.querySelector("#image-caption");
   const imageBackBtn = dialog.querySelector(".image-back-btn");
 
+  let currentMediaDir = "img";
+  let isMediaUploading = false;
+
   function formatMediaDirLabel(relativeDir) {
     return relativeDir ? relativeDir.replace(/\//g, " / ") : "public";
   }
 
   function getMediaFileUrl(relativePath) {
     return `/api/media/file?project=${encodeURIComponent(api.getProjectPath())}&path=${encodeURIComponent(relativePath)}`;
+  }
+
+  function getImageSearchLabel(image, searchRootDir) {
+    if (image.dir === searchRootDir) {
+      return image.name;
+    }
+
+    const fullPath = image.dir ? `${image.dir}/${image.name}` : image.name;
+    const prefix = searchRootDir ? `${searchRootDir}/` : "";
+
+    if (searchRootDir && fullPath.startsWith(prefix)) {
+      return fullPath.slice(prefix.length);
+    }
+
+    return fullPath;
+  }
+
+  function navigateToMediaDirectory(relativeDir) {
+    mediaSearchInput.value = "";
+    loadMediaDirectory(relativeDir);
+  }
+
+  function isImageUploadFile(file) {
+    const dotIndex = file.name.lastIndexOf(".");
+    if (dotIndex === -1) {
+      return false;
+    }
+
+    const extension = file.name.slice(dotIndex).toLowerCase();
+    return IMAGE_UPLOAD_EXTENSIONS.has(extension);
+  }
+
+  function createMediaAddItem() {
+    const label = document.createElement("label");
+    label.className = "media-item-btn media-add-btn";
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.className = "media-upload-input";
+    input.accept = IMAGE_UPLOAD_ACCEPT;
+    input.disabled = isMediaUploading;
+
+    const preview = document.createElement("span");
+    preview.className = "media-item-preview media-add-preview";
+    preview.innerHTML = icons.plus;
+    preview.setAttribute("aria-hidden", "true");
+
+    const name = document.createElement("span");
+    name.className = "media-item-name";
+    name.textContent = "Add";
+
+    label.append(input, preview, name);
+    label.title = "Upload image";
+
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      input.value = "";
+
+      if (!file) {
+        return;
+      }
+
+      if (!isImageUploadFile(file)) {
+        setMediaStatus("Only image files are supported.", { isError: true });
+        return;
+      }
+
+      isMediaUploading = true;
+      input.disabled = true;
+      setMediaStatus("Uploading…");
+
+      try {
+        const params = new URLSearchParams({
+          project: api.getProjectPath(),
+          dir: currentMediaDir,
+          filename: file.name,
+        });
+        const response = await fetch(`/api/media/upload?${params.toString()}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+          body: file,
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          setMediaStatus(data.error ?? "Could not upload image", { isError: true });
+          return;
+        }
+
+        await loadMediaDirectory(currentMediaDir);
+      } catch {
+        setMediaStatus("Could not upload image", { isError: true });
+      } finally {
+        isMediaUploading = false;
+        input.disabled = false;
+      }
+    });
+
+    return label;
   }
 
   function setMediaStatus(message, { isError = false } = {}) {
@@ -132,7 +255,7 @@ function createMediaDialog(api) {
       button.type = "button";
       button.textContent = crumb.label;
       button.addEventListener("click", () => {
-        loadMediaDirectory(crumb.dir);
+        navigateToMediaDirectory(crumb.dir);
       });
       mediaBreadcrumb.append(button);
     });
@@ -160,86 +283,115 @@ function createMediaDialog(api) {
   }
 
   function renderMediaDirectory(data) {
+    const isSearching = Boolean(data.searchQuery);
+
     mediaUpBtn.disabled = data.parentDir === null;
     mediaUpBtn.onclick = () => {
       if (data.parentDir !== null) {
-        loadMediaDirectory(data.parentDir === "" ? "" : data.parentDir);
+        navigateToMediaDirectory(data.parentDir === "" ? "" : data.parentDir);
       }
     };
 
     renderMediaBreadcrumb(data.currentDir);
-    mediaFolders.replaceChildren();
-    mediaImages.replaceChildren();
+    mediaGrid.replaceChildren();
 
-    for (const folder of data.folders) {
-      const item = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "media-folder-btn";
-      button.innerHTML = `<span class="media-folder-icon">${icons.folder}</span><span>${folder.name}</span>`;
-      button.addEventListener("click", () => {
-        loadMediaDirectory(folder.dir);
-      });
-      item.append(button);
-      mediaFolders.append(item);
+    if (!isSearching) {
+      for (const folder of data.folders) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "media-item-btn media-folder-btn";
+        button.title = folder.name;
+
+        const preview = document.createElement("span");
+        preview.className = "media-item-preview media-folder-preview";
+        preview.innerHTML = icons.folder;
+        preview.setAttribute("aria-hidden", "true");
+
+        const label = document.createElement("span");
+        label.className = "media-item-name";
+        label.textContent = folder.name;
+
+        button.append(preview, label);
+        button.addEventListener("click", () => {
+          navigateToMediaDirectory(folder.dir);
+        });
+        mediaGrid.append(button);
+      }
+
+      mediaGrid.append(createMediaAddItem());
     }
 
     for (const image of data.images) {
       const relativePath = image.webPath.replace(/^\//, "");
+      const displayName = isSearching
+        ? getImageSearchLabel(image, data.currentDir)
+        : image.name;
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "media-image-btn";
-      button.title = image.name;
+      button.className = "media-item-btn media-image-btn";
+      button.title = displayName;
 
       const preview = document.createElement("img");
-      preview.className = "media-image-preview";
+      preview.className = "media-item-preview media-image-preview";
       preview.src = getMediaFileUrl(relativePath);
       preview.alt = "";
       preview.loading = "lazy";
 
       const label = document.createElement("span");
-      label.className = "media-image-name";
-      label.textContent = image.name;
+      label.className = "media-item-name";
+      label.textContent = displayName;
 
       button.append(preview, label);
       button.addEventListener("click", () => {
         showMediaDetailsView(image);
       });
 
-      mediaImages.append(button);
+      mediaGrid.append(button);
     }
 
     if (data.folders.length === 0 && data.images.length === 0) {
-      setMediaStatus(`No folders or images in ${formatMediaDirLabel(data.currentDir)}.`);
+      if (isSearching) {
+        setMediaStatus(
+          `No images matching "${data.searchQuery}" in ${formatMediaDirLabel(data.currentDir)}.`,
+        );
+      } else {
+        setMediaStatus("");
+      }
     } else {
       setMediaStatus("");
     }
   }
 
-  async function loadMediaDirectory(relativeDir = "img") {
+  async function loadMediaDirectory(relativeDir = currentMediaDir) {
+    currentMediaDir = relativeDir;
+    const searchQuery = mediaSearchInput.value.trim();
+
     if (!api.getProjectPath()) {
       setMediaStatus("Open and scan a project first.", { isError: true });
-      mediaFolders.replaceChildren();
-      mediaImages.replaceChildren();
+      mediaGrid.replaceChildren();
       mediaUpBtn.disabled = true;
       mediaBreadcrumb.replaceChildren();
       return;
     }
 
-    setMediaStatus("Loading…");
+    setMediaStatus(searchQuery ? "Searching…" : "Loading…");
 
     try {
       const params = new URLSearchParams({
         project: api.getProjectPath(),
         dir: relativeDir,
       });
+
+      if (searchQuery) {
+        params.set("q", searchQuery);
+      }
+
       const response = await fetch(`/api/media?${params.toString()}`);
       const data = await response.json();
 
       if (!response.ok) {
         setMediaStatus(data.error ?? "Could not load media", { isError: true });
-        mediaFolders.replaceChildren();
-        mediaImages.replaceChildren();
+        mediaGrid.replaceChildren();
         mediaUpBtn.disabled = true;
         mediaBreadcrumb.replaceChildren();
         return;
@@ -248,8 +400,7 @@ function createMediaDialog(api) {
       renderMediaDirectory(data);
     } catch {
       setMediaStatus("Could not load media", { isError: true });
-      mediaFolders.replaceChildren();
-      mediaImages.replaceChildren();
+      mediaGrid.replaceChildren();
       mediaUpBtn.disabled = true;
       mediaBreadcrumb.replaceChildren();
     }
@@ -259,6 +410,8 @@ function createMediaDialog(api) {
     const caret = api.saveCaret();
     api.setPendingCaret(caret);
     showMediaBrowserView();
+    mediaSearchInput.value = "";
+    currentMediaDir = "img";
     dialog.showModal();
     loadMediaDirectory("img");
   }
@@ -300,6 +453,10 @@ function createMediaDialog(api) {
 
   imageBackBtn.addEventListener("click", () => {
     showMediaBrowserView();
+  });
+
+  mediaSearchInput.addEventListener("input", () => {
+    loadMediaDirectory(currentMediaDir);
   });
 
   imageAltInput.addEventListener("keydown", (event) => {

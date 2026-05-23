@@ -773,23 +773,100 @@ async function listMediaDirectory(projectPath, relativePath = "img") {
   folders.sort((a, b) => a.name.localeCompare(b.name));
   images.sort((a, b) => a.name.localeCompare(b.name));
 
-  const parentDir =
-    currentDir === ""
-      ? null
-      : path.posix.dirname(currentDir) === "."
-        ? ""
-        : path.posix.dirname(currentDir);
-
   return {
     currentDir,
-    parentDir,
+    parentDir: getMediaParentDir(currentDir),
     folders,
     images,
   };
 }
 
+function getMediaParentDir(currentDir) {
+  if (currentDir === "") {
+    return null;
+  }
+
+  const parentDir = path.posix.dirname(currentDir);
+  return parentDir === "." ? "" : parentDir;
+}
+
+async function walkMediaImages(dirPath, relativeDir, query, images) {
+  let entries;
+
+  try {
+    entries = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+
+    const entryRelativePath = relativeDir
+      ? path.posix.join(relativeDir, entry.name)
+      : entry.name;
+
+    if (entry.isDirectory()) {
+      await walkMediaImages(
+        path.join(dirPath, entry.name),
+        entryRelativePath,
+        query,
+        images,
+      );
+      continue;
+    }
+
+    if (!entry.isFile()) continue;
+
+    const ext = path.extname(entry.name).toLowerCase();
+    if (!IMAGE_EXTENSIONS.has(ext)) continue;
+
+    if (entry.name.toLowerCase().includes(query)) {
+      images.push({
+        name: entry.name,
+        dir: relativeDir,
+        webPath: toWebPath(entryRelativePath),
+      });
+    }
+  }
+}
+
+async function searchMediaImages(projectPath, relativePath, query) {
+  const resolved = resolvePublicSubpath(projectPath, relativePath);
+  if (!resolved) {
+    return { error: "Invalid media path" };
+  }
+
+  const { publicDir, target, relativePath: currentDir } = resolved;
+
+  if (!(await isDirectory(publicDir))) {
+    return { error: "This project has no public folder" };
+  }
+
+  if (!(await isDirectory(target))) {
+    return { error: "Folder does not exist" };
+  }
+
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return listMediaDirectory(projectPath, relativePath);
+  }
+
+  const images = [];
+  await walkMediaImages(target, currentDir, normalizedQuery, images);
+  images.sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    currentDir,
+    parentDir: getMediaParentDir(currentDir),
+    folders: [],
+    images,
+    searchQuery: query.trim(),
+  };
+}
+
 app.get("/api/media", async (req, res) => {
-  const { project: projectPath, dir = "img" } = req.query;
+  const { project: projectPath, dir = "img", q = "" } = req.query;
 
   if (!projectPath || typeof projectPath !== "string") {
     return res.status(400).json({ error: "A project path is required" });
@@ -806,7 +883,11 @@ app.get("/api/media", async (req, res) => {
     return res.status(404).json({ error: "Project does not exist or is not accessible" });
   }
 
-  const result = await listMediaDirectory(resolvedProject, typeof dir === "string" ? dir : "img");
+  const relativeDir = typeof dir === "string" ? dir : "img";
+  const searchQuery = typeof q === "string" ? q.trim() : "";
+  const result = searchQuery
+    ? await searchMediaImages(resolvedProject, relativeDir, searchQuery)
+    : await listMediaDirectory(resolvedProject, relativeDir);
 
   if (result.error) {
     return res.status(400).json({ error: result.error });
@@ -817,6 +898,94 @@ app.get("/api/media", async (req, res) => {
     ...result,
   });
 });
+
+async function getUniqueImageFilename(dirPath, filename) {
+  const sanitized = path.basename(filename.replace(/\\/g, "/"));
+  const ext = path.extname(sanitized).toLowerCase();
+  const base = path.basename(sanitized, path.extname(sanitized));
+  let candidate = sanitized;
+  let counter = 1;
+
+  while (true) {
+    try {
+      await fs.stat(path.join(dirPath, candidate));
+      candidate = `${base}-${counter}${ext}`;
+      counter += 1;
+    } catch {
+      return candidate;
+    }
+  }
+}
+
+app.post(
+  "/api/media/upload",
+  express.raw({ type: () => true, limit: "25mb" }),
+  async (req, res) => {
+    const { project: projectPath, dir = "img", filename } = req.query;
+
+    if (!projectPath || typeof projectPath !== "string") {
+      return res.status(400).json({ error: "A project path is required" });
+    }
+
+    if (!filename || typeof filename !== "string") {
+      return res.status(400).json({ error: "A filename is required" });
+    }
+
+    const sanitizedFilename = path.basename(filename.replace(/\\/g, "/"));
+    const ext = path.extname(sanitizedFilename).toLowerCase();
+    if (!IMAGE_EXTENSIONS.has(ext)) {
+      return res.status(400).json({ error: "Only image files are supported" });
+    }
+
+    if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: "File content is required" });
+    }
+
+    const resolvedProject = path.resolve(projectPath);
+
+    try {
+      const stat = await fs.stat(resolvedProject);
+      if (!stat.isDirectory()) {
+        return res.status(400).json({ error: "Project path is not a directory" });
+      }
+    } catch {
+      return res.status(404).json({ error: "Project does not exist or is not accessible" });
+    }
+
+    const relativeDir = typeof dir === "string" ? dir : "img";
+    const resolved = resolvePublicSubpath(resolvedProject, relativeDir);
+    if (!resolved) {
+      return res.status(400).json({ error: "Invalid media path" });
+    }
+
+    const { publicDir, target, relativePath: currentDir } = resolved;
+
+    if (!(await isDirectory(publicDir))) {
+      return res.status(400).json({ error: "This project has no public folder" });
+    }
+
+    if (!(await isDirectory(target))) {
+      return res.status(400).json({ error: "Folder does not exist" });
+    }
+
+    const uniqueFilename = await getUniqueImageFilename(target, sanitizedFilename);
+    const filePath = path.join(target, uniqueFilename);
+    const entryRelativePath = currentDir
+      ? path.posix.join(currentDir, uniqueFilename)
+      : uniqueFilename;
+
+    try {
+      await fs.writeFile(filePath, req.body);
+      res.json({
+        name: uniqueFilename,
+        dir: currentDir,
+        webPath: toWebPath(entryRelativePath),
+      });
+    } catch {
+      res.status(500).json({ error: "Could not save image" });
+    }
+  },
+);
 
 app.get("/api/media/file", async (req, res) => {
   const { project: projectPath, path: mediaPath } = req.query;

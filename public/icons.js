@@ -46,4 +46,7 @@ export const icons = {
   layout: icon(
     '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>',
   ),
+  collapseAll: icon(
+    '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+  ),
 };

@@ -5,6 +5,7 @@ const browseBtn = document.getElementById("browse-btn");
 const scanBtn = document.getElementById("scan-btn");
 const scanInfo = document.getElementById("scan-info");
 const fileCount = document.getElementById("file-count");
+const collapseAllBtn = document.getElementById("collapse-all-btn");
 const emptyState = document.getElementById("empty-state");
 const searchBox = document.getElementById("search-box");
 const fileSearch = document.getElementById("file-search");
@@ -32,6 +33,7 @@ let scannedDirectories = [];
 let lastScanTargets = [];
 let currentProjectPath = "";
 let expandedPaths = new Set();
+let hasStoredExpandedPaths = false;
 let currentEditFile = null;
 let currentEditFrontmatter = null;
 let isSavingFile = false;
@@ -72,6 +74,7 @@ const LINE_DECORATION_CLASSES = [
   ...COLON_DEPTH_CLASSES,
 ];
 const COLON_IMG_LINE_RE = /^:img\{\s*([^}]*)\}\s*$/;
+const HTML_IMG_LINE_RE = /^<img\b[^>]*\/?>\s*$/i;
 const COLON_IMG_SRC_RE = /\bsrc\s*=\s*"([^"]*)"/;
 const COLON_IMG_ALT_RE = /\balt\s*=\s*"([^"]*)"/;
 const MARKDOWN_IMG_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -610,6 +613,11 @@ function getExpectedImagePreviews(line, lineState = {}) {
     return attributes.src ? [attributes] : [];
   }
 
+  if (HTML_IMG_LINE_RE.test(line)) {
+    const attributes = parseColonImgAttributes(line);
+    return attributes.src ? [attributes] : [];
+  }
+
   const previews = [];
   MARKDOWN_IMG_RE.lastIndex = 0;
   let match = MARKDOWN_IMG_RE.exec(line);
@@ -652,6 +660,15 @@ function appendEditorLineContent(element, line, lineState = {}) {
   if (colonImgMatch) {
     element.append(document.createTextNode(line));
     const attributes = parseColonImgAttributes(colonImgMatch[1]);
+    if (attributes.src) {
+      element.append(createEditorImagePreviewChip(attributes));
+    }
+    return;
+  }
+
+  if (HTML_IMG_LINE_RE.test(line)) {
+    element.append(document.createTextNode(line));
+    const attributes = parseColonImgAttributes(line);
     if (attributes.src) {
       element.append(createEditorImagePreviewChip(attributes));
     }
@@ -848,6 +865,7 @@ function filterFiles(files, query) {
 
 function loadExpandedPaths(projectPath) {
   expandedPaths = new Set();
+  hasStoredExpandedPaths = false;
 
   if (!projectPath) {
     return;
@@ -855,7 +873,8 @@ function loadExpandedPaths(projectPath) {
 
   try {
     const stored = localStorage.getItem(`starmark:expanded:${projectPath}`);
-    if (stored) {
+    if (stored !== null) {
+      hasStoredExpandedPaths = true;
       expandedPaths = new Set(JSON.parse(stored));
     }
   } catch {
@@ -868,6 +887,8 @@ function saveExpandedPaths() {
     return;
   }
 
+  hasStoredExpandedPaths = true;
+
   try {
     localStorage.setItem(
       `starmark:expanded:${currentProjectPath}`,
@@ -879,7 +900,7 @@ function saveExpandedPaths() {
 }
 
 function ensureDefaultExpandedRoots(tree) {
-  if (expandedPaths.size > 0) {
+  if (hasStoredExpandedPaths || expandedPaths.size > 0) {
     return;
   }
 
@@ -904,6 +925,13 @@ function collectFolderPaths(nodes, paths = []) {
   }
 
   return paths;
+}
+
+function collapseAllFolders() {
+  expandedPaths.clear();
+  hasStoredExpandedPaths = true;
+  saveExpandedPaths();
+  updateFileResults();
 }
 
 function countTreeContents(nodes) {
@@ -1416,6 +1444,7 @@ function updateFileResults() {
     emptyState.textContent = "No files match your search.";
     fileList.hidden = true;
     fileList.innerHTML = "";
+    collapseAllBtn.hidden = true;
     return;
   }
 
@@ -1429,6 +1458,7 @@ function updateFileResults() {
     emptyState.textContent = "No .md or .mdx files found in this folder.";
     fileList.hidden = true;
     fileList.innerHTML = "";
+    collapseAllBtn.hidden = true;
     return;
   }
 
@@ -1448,6 +1478,7 @@ function updateFileResults() {
   }
 
   fileList.hidden = false;
+  collapseAllBtn.hidden = false;
   renderFileTree(tree, { isSearching });
 }
 
@@ -2013,6 +2044,14 @@ function createFileRow(node, depth, { isSearching = false } = {}) {
 
   actions.append(editBtn, deleteBtn);
   item.append(main, folderCol, fileCol, actions);
+
+  item.addEventListener("dblclick", (event) => {
+    if (event.target.closest(".file-actions")) {
+      return;
+    }
+    openEditView(file);
+  });
+
   return item;
 }
 
@@ -2104,6 +2143,15 @@ function createPageFolderRow(node, depth, { isSearching = false } = {}) {
 
   actions.append(editBtn, addBtn, deleteBtn);
   summary.append(actions);
+
+  summary.addEventListener("dblclick", (event) => {
+    if (event.target.closest(".file-actions")) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    openEditView(pageFile);
+  });
 
   details.append(summary);
 
@@ -2679,6 +2727,8 @@ const { openNewItemDialog } = createNewItemDialog();
 
 browseBtn.addEventListener("click", browseFolder);
 scanBtn.addEventListener("click", () => scanFolder());
+collapseAllBtn.innerHTML = icons.collapseAll;
+collapseAllBtn.addEventListener("click", collapseAllFolders);
 fileSearch.addEventListener("input", updateFileResults);
 folderInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {

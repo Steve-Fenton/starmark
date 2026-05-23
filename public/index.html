@@ -49,7 +49,17 @@
       <section id="list-view" class="results">
         <div class="results-header">
           <h2>Content &amp; pages</h2>
-          <span id="file-count" class="file-count"></span>
+          <div class="results-header-actions">
+            <button
+              id="collapse-all-btn"
+              type="button"
+              class="results-icon-btn"
+              hidden
+              aria-label="Collapse all folders"
+              title="Collapse all folders"
+            ></button>
+            <span id="file-count" class="file-count"></span>
+          </div>
         </div>
         <div id="search-box" class="search-box" hidden>
           <input
