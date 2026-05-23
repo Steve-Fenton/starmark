@@ -307,10 +307,9 @@ button:disabled {
 }
 
 .tree-folder-header {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
-  gap: 0.65rem;
+  display: flex;
   align-items: center;
+  gap: 0.65rem;
   padding: 0.75rem 1rem;
   padding-left: calc(1rem + var(--depth, 0) * 1.15rem);
   border-top: 1px solid var(--border);
@@ -343,6 +342,7 @@ details[open] > .tree-folder-header::before {
 }
 
 .tree-folder-name {
+  flex: 1;
   min-width: 0;
   font-weight: 600;
   white-space: nowrap;
@@ -354,6 +354,7 @@ details[open] > .tree-folder-header::before {
   color: var(--muted);
   font-size: 0.8rem;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tree-children {
@@ -363,17 +364,17 @@ details[open] > .tree-folder-header::before {
 }
 
 .tree-file {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 0.65rem;
+  display: flex;
   align-items: center;
+  gap: 0.65rem;
   padding: 0.65rem 1rem;
-  padding-left: calc(1rem + (var(--depth, 0) + 1) * 1.15rem + 1.1rem);
+  padding-left: calc(1rem + var(--depth, 0) * 1.15rem);
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
 }
 
 .tree-file .file-name {
+  flex: 1;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -479,6 +480,8 @@ details[open] > .tree-folder-header::before {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .tree-action-btn,

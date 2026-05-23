@@ -1880,7 +1880,7 @@ function formatScanInfo(scanTargets) {
 }
 
 function appendMoveButtons(actions, file, { isSearching = false } = {}) {
-  if (isSearching) {
+  if (isSearching || file.source === "content") {
     return;
   }
 
