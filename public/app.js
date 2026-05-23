@@ -19,6 +19,9 @@ const projectsMenuBtn = document.getElementById("projects-menu-btn");
 const projectsDialog = document.getElementById("projects-dialog");
 const projectsDialogClose = document.getElementById("projects-dialog-close");
 const linkBtn = document.getElementById("link-btn");
+const boldBtn = document.getElementById("bold-btn");
+const italicBtn = document.getElementById("italic-btn");
+const strikethroughBtn = document.getElementById("strikethrough-btn");
 const linkDialog = document.getElementById("link-dialog");
 const linkDialogClose = document.getElementById("link-dialog-close");
 const linkForm = document.getElementById("link-form");
@@ -303,6 +306,41 @@ function saveEditorSelection() {
 
   savedLinkRange = range.cloneRange();
   return range.toString();
+}
+
+function wrapEditorSelection(wrapper) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return false;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!markdownEditor.contains(range.commonAncestorContainer) || range.collapsed) {
+    return false;
+  }
+
+  const selectedText = range.toString();
+  const markdown = `${wrapper}${selectedText}${wrapper}`;
+
+  range.deleteContents();
+  const textNode = document.createTextNode(markdown);
+  range.insertNode(textNode);
+
+  range.setStartAfter(textNode);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  reevaluateMarkdownEditorLines();
+  markdownEditor.focus();
+  return true;
+}
+
+function attachToolbarButton(button, handler) {
+  button.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  button.addEventListener("click", handler);
 }
 
 function saveEditorCaret() {
@@ -1391,11 +1429,19 @@ projectsDialog.addEventListener("click", (event) => {
 editBackBtn.addEventListener("click", showListView);
 markdownEditor.addEventListener("input", reevaluateMarkdownEditorLines);
 
-linkBtn.addEventListener("mousedown", (event) => {
-  event.preventDefault();
+attachToolbarButton(boldBtn, () => {
+  wrapEditorSelection("**");
 });
 
-linkBtn.addEventListener("click", openLinkDialog);
+attachToolbarButton(italicBtn, () => {
+  wrapEditorSelection("*");
+});
+
+attachToolbarButton(strikethroughBtn, () => {
+  wrapEditorSelection("~~");
+});
+
+attachToolbarButton(linkBtn, openLinkDialog);
 
 linkForm.addEventListener("submit", submitLinkDialog);
 
@@ -1420,11 +1466,7 @@ linkTextInput.addEventListener("keydown", (event) => {
   }
 });
 
-imageBtn.addEventListener("mousedown", (event) => {
-  event.preventDefault();
-});
-
-imageBtn.addEventListener("click", openMediaDialog);
+attachToolbarButton(imageBtn, openMediaDialog);
 
 mediaDialogClose.addEventListener("click", () => {
   mediaDialog.close();

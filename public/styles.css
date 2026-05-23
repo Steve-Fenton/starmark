@@ -503,9 +503,22 @@ details[open] > .tree-folder-header::before {
 .edit-toolbar {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--border);
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--border);
+  flex-shrink: 0;
 }
 
 .toolbar-btn {
