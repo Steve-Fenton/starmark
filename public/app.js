@@ -18,6 +18,13 @@ const projectList = document.getElementById("project-list");
 const projectsMenuBtn = document.getElementById("projects-menu-btn");
 const projectsDialog = document.getElementById("projects-dialog");
 const projectsDialogClose = document.getElementById("projects-dialog-close");
+const linkBtn = document.getElementById("link-btn");
+const linkDialog = document.getElementById("link-dialog");
+const linkDialogClose = document.getElementById("link-dialog-close");
+const linkForm = document.getElementById("link-form");
+const linkTextInput = document.getElementById("link-text");
+const linkUrlInput = document.getElementById("link-url");
+const topBar = document.querySelector(".top-bar");
 
 let projectButtons = [];
 let scannedFiles = [];
@@ -25,6 +32,7 @@ let currentProjectPath = "";
 let expandedPaths = new Set();
 let currentEditFile = null;
 let currentEditFrontmatter = null;
+let savedLinkRange = null;
 
 const SOURCE_ROOTS = {
   content: "src/content",
@@ -38,7 +46,18 @@ const EDIT_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="
 const HEADING_LINE_RE = /^(#{1,6})\s+(.*)$/;
 const CODE_FENCE_RE = /^```/;
 const CODE_FENCE_CLOSE_RE = /^```\s*$/;
+const COLON_BLOCK_OPEN_RE = /^(:{3,})/;
+const COLON_INLINE_DOUBLE_RE = /^::(?!\:)/;
+const COLON_INLINE_SINGLE_RE = /^:(?!\:)/;
 const EDITOR_LINE_SELECTOR = "p, h1, h2, h3, h4, h5, h6";
+const COLON_DEPTH_CLASSES = Array.from({ length: 6 }, (_, index) => `colon-depth-${index + 1}`);
+const LINE_DECORATION_CLASSES = [
+  "is-code-block",
+  "is-colon-block-start",
+  "is-colon-block-end",
+  "is-colon-inline",
+  ...COLON_DEPTH_CLASSES,
+];
 
 function getCodeBlockStates(lines) {
   const states = [];
@@ -62,8 +81,120 @@ function getCodeBlockStates(lines) {
   return states;
 }
 
-function getLineElementTagName(line, inCodeBlock = false) {
-  if (inCodeBlock) {
+function getColonLineStates(lines, codeBlockStates) {
+  const states = [];
+  const blockStack = [];
+
+  function pushContentState() {
+    states.push({
+      inColonBlock: blockStack.length > 0,
+      colonRole: null,
+      colonDepth: 0,
+    });
+  }
+
+  function pushInlineState(depth) {
+    states.push({
+      inColonBlock: blockStack.length > 0,
+      colonRole: "inline",
+      colonDepth: depth,
+    });
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+
+    if (codeBlockStates[index]) {
+      states.push({
+        inColonBlock: blockStack.length > 0,
+        colonRole: null,
+        colonDepth: 0,
+      });
+      continue;
+    }
+
+    if (blockStack.length > 0) {
+      const currentDepth = blockStack[blockStack.length - 1];
+      const closePattern = new RegExp(`^(:{${currentDepth}})\\s*$`);
+
+      if (closePattern.test(line)) {
+        states.push({
+          inColonBlock: true,
+          colonRole: "block-end",
+          colonDepth: currentDepth,
+        });
+        blockStack.pop();
+        continue;
+      }
+
+      const nestedOpenMatch = line.match(COLON_BLOCK_OPEN_RE);
+      if (nestedOpenMatch) {
+        const depth = nestedOpenMatch[1].length;
+        states.push({
+          inColonBlock: true,
+          colonRole: "block-start",
+          colonDepth: depth,
+        });
+        blockStack.push(depth);
+        continue;
+      }
+
+      if (COLON_INLINE_DOUBLE_RE.test(line)) {
+        pushInlineState(2);
+        continue;
+      }
+
+      if (COLON_INLINE_SINGLE_RE.test(line)) {
+        pushInlineState(1);
+        continue;
+      }
+
+      pushContentState();
+      continue;
+    }
+
+    const blockOpenMatch = line.match(COLON_BLOCK_OPEN_RE);
+    if (blockOpenMatch) {
+      const depth = blockOpenMatch[1].length;
+      states.push({
+        inColonBlock: true,
+        colonRole: "block-start",
+        colonDepth: depth,
+      });
+      blockStack.push(depth);
+      continue;
+    }
+
+    if (COLON_INLINE_DOUBLE_RE.test(line)) {
+      pushInlineState(2);
+      continue;
+    }
+
+    if (COLON_INLINE_SINGLE_RE.test(line)) {
+      pushInlineState(1);
+      continue;
+    }
+
+    pushContentState();
+  }
+
+  return states;
+}
+
+function getEditorLineStates(lines) {
+  const codeBlockStates = getCodeBlockStates(lines);
+  const colonStates = getColonLineStates(lines, codeBlockStates);
+
+  return lines.map((_, index) => ({
+    inCodeBlock: codeBlockStates[index],
+    inColonBlock: colonStates[index].inColonBlock,
+    colonRole: colonStates[index].colonRole,
+    colonDepth: colonStates[index].colonDepth,
+  }));
+}
+
+function getLineElementTagName(line, lineState = {}) {
+  if (lineState.inCodeBlock || lineState.inColonBlock) {
     return "p";
   }
 
@@ -133,8 +264,110 @@ function setCaretOffsetInElement(element, offset) {
   selection.addRange(range);
 }
 
-function createEditorLineElement(line, inCodeBlock = false) {
-  const tagName = getLineElementTagName(line, inCodeBlock);
+function syncTopBarHeight() {
+  if (topBar) {
+    document.documentElement.style.setProperty("--top-bar-height", `${topBar.offsetHeight}px`);
+  }
+}
+
+function saveEditorSelection() {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    savedLinkRange = null;
+    return "";
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!markdownEditor.contains(range.commonAncestorContainer)) {
+    savedLinkRange = null;
+    return "";
+  }
+
+  savedLinkRange = range.cloneRange();
+  return range.toString();
+}
+
+function insertMarkdownLinkAtSelection(linkText, url) {
+  const trimmedUrl = url.trim();
+  if (!savedLinkRange || !trimmedUrl) {
+    return false;
+  }
+
+  const markdown = `[${linkText}](${trimmedUrl})`;
+  savedLinkRange.deleteContents();
+  const textNode = document.createTextNode(markdown);
+  savedLinkRange.insertNode(textNode);
+
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.setStartAfter(textNode);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  savedLinkRange = null;
+  reevaluateMarkdownEditorLines();
+  markdownEditor.focus();
+  return true;
+}
+
+function openLinkDialog() {
+  const selectedText = saveEditorSelection();
+  linkTextInput.value = selectedText;
+  linkUrlInput.value = "";
+  linkDialog.showModal();
+  linkUrlInput.focus();
+}
+
+function submitLinkDialog(event) {
+  event.preventDefault();
+
+  if (!insertMarkdownLinkAtSelection(linkTextInput.value, linkUrlInput.value)) {
+    linkUrlInput.focus();
+    return;
+  }
+
+  linkDialog.close();
+}
+
+function applyLineDecorations(element, lineState) {
+  element.classList.toggle("is-code-block", lineState.inCodeBlock);
+  element.classList.toggle("is-colon-block-start", lineState.colonRole === "block-start");
+  element.classList.toggle("is-colon-block-end", lineState.colonRole === "block-end");
+  element.classList.toggle("is-colon-inline", lineState.colonRole === "inline");
+
+  const depthClass =
+    lineState.colonRole && lineState.colonDepth > 0
+      ? `colon-depth-${Math.min(lineState.colonDepth, COLON_DEPTH_CLASSES.length)}`
+      : null;
+
+  for (const className of COLON_DEPTH_CLASSES) {
+    element.classList.toggle(className, className === depthClass);
+  }
+}
+
+function lineDecorationsMatch(element, lineState) {
+  for (const className of LINE_DECORATION_CLASSES) {
+    const shouldHaveClass =
+      (className === "is-code-block" && lineState.inCodeBlock) ||
+      (className === "is-colon-block-start" && lineState.colonRole === "block-start") ||
+      (className === "is-colon-block-end" && lineState.colonRole === "block-end") ||
+      (className === "is-colon-inline" && lineState.colonRole === "inline") ||
+      (lineState.colonRole &&
+        lineState.colonDepth > 0 &&
+        className ===
+          `colon-depth-${Math.min(lineState.colonDepth, COLON_DEPTH_CLASSES.length)}`);
+
+    if (element.classList.contains(className) !== shouldHaveClass) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function createEditorLineElement(line, lineState = {}) {
+  const tagName = getLineElementTagName(line, lineState);
 
   if (tagName !== "p") {
     const element = document.createElement(tagName);
@@ -149,30 +382,28 @@ function createEditorLineElement(line, inCodeBlock = false) {
     paragraph.textContent = line;
   }
 
-  if (inCodeBlock) {
-    paragraph.classList.add("is-code-block");
-  }
+  applyLineDecorations(paragraph, lineState);
 
   return paragraph;
 }
 
-function reevaluateEditorLine(element, inCodeBlock = false) {
+function reevaluateEditorLine(element, lineState = {}) {
   const line = getEditorLineText(element);
-  const expectedTag = getLineElementTagName(line, inCodeBlock);
+  const expectedTag = getLineElementTagName(line, lineState);
   const tagMatches = element.tagName.toLowerCase() === expectedTag;
-  const classMatches = element.classList.contains("is-code-block") === inCodeBlock;
+  const decorationsMatch = lineDecorationsMatch(element, lineState);
 
-  if (tagMatches && classMatches) {
+  if (tagMatches && decorationsMatch) {
     return element;
   }
 
   if (tagMatches) {
-    element.classList.toggle("is-code-block", inCodeBlock);
+    applyLineDecorations(element, lineState);
     return element;
   }
 
   const caretOffset = getCaretOffsetInElement(element);
-  const nextElement = createEditorLineElement(line, inCodeBlock);
+  const nextElement = createEditorLineElement(line, lineState);
   element.replaceWith(nextElement);
 
   if (caretOffset !== null) {
@@ -190,11 +421,10 @@ function reevaluateMarkdownEditorLines() {
   const lineElements = [...markdownEditor.children].filter((child) =>
     child.matches(EDITOR_LINE_SELECTOR),
   );
-  const lines = lineElements.map(getEditorLineText);
-  const codeBlockStates = getCodeBlockStates(lines);
+  const lineStates = getEditorLineStates(lineElements.map(getEditorLineText));
 
   lineElements.forEach((child, index) => {
-    reevaluateEditorLine(child, codeBlockStates[index]);
+    reevaluateEditorLine(child, lineStates[index]);
   });
 
   markdownEditor.classList.toggle("is-empty", markdownEditor.childElementCount === 0);
@@ -204,10 +434,10 @@ function renderMarkdownEditor(content) {
   markdownEditor.replaceChildren();
 
   const lines = content.split(/\r?\n/);
-  const codeBlockStates = getCodeBlockStates(lines);
+  const lineStates = getEditorLineStates(lines);
 
   for (let index = 0; index < lines.length; index += 1) {
-    markdownEditor.append(createEditorLineElement(lines[index], codeBlockStates[index]));
+    markdownEditor.append(createEditorLineElement(lines[index], lineStates[index]));
   }
 
   markdownEditor.classList.toggle("is-empty", markdownEditor.childElementCount === 0);
@@ -844,6 +1074,38 @@ projectsDialog.addEventListener("click", (event) => {
 
 editBackBtn.addEventListener("click", showListView);
 markdownEditor.addEventListener("input", reevaluateMarkdownEditorLines);
+
+linkBtn.addEventListener("mousedown", (event) => {
+  event.preventDefault();
+});
+
+linkBtn.addEventListener("click", openLinkDialog);
+
+linkForm.addEventListener("submit", submitLinkDialog);
+
+linkDialogClose.addEventListener("click", () => {
+  linkDialog.close();
+});
+
+linkDialog.addEventListener("click", (event) => {
+  if (event.target === linkDialog) {
+    linkDialog.close();
+  }
+});
+
+linkDialog.addEventListener("close", () => {
+  savedLinkRange = null;
+});
+
+linkTextInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    linkUrlInput.focus();
+  }
+});
+
+syncTopBarHeight();
+window.addEventListener("resize", syncTopBarHeight);
 
 loadProjects().then(async () => {
   const projectFromUrl = getProjectFromUrl();

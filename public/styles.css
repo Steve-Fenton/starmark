@@ -7,6 +7,7 @@
   --muted: #9aa4b8;
   --accent: #6ea8ff;
   --accent-hover: #8cbcff;
+  --colon-block: #8cbcff;
   --code: #7ee787;
   --md: #7ee787;
   --mdx: #ffa657;
@@ -484,12 +485,46 @@ details[open] > .tree-folder-header::before {
   margin-top: 0;
 }
 
+.edit-sticky-bar {
+  position: sticky;
+  top: var(--top-bar-height, 3.6rem);
+  z-index: 9;
+  margin-bottom: 0.75rem;
+  background: var(--bg);
+}
+
 .edit-header {
   display: flex;
   align-items: flex-start;
   gap: 1rem;
-  padding: 0.75rem 0;
-  margin-bottom: 0.75rem;
+  padding: 0.75rem 0 0;
+}
+
+.edit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
 }
 
 .edit-back-btn {
@@ -601,6 +636,58 @@ details[open] > .tree-folder-header::before {
   color: var(--code);
 }
 
+.markdown-editor > .is-colon-block-start,
+.markdown-editor > .is-colon-block-end {
+  color: var(--colon-color);
+  padding-left: 0.65rem;
+  border-left: var(--colon-border-width, 3px) solid var(--colon-accent);
+  background: color-mix(in srgb, var(--colon-accent) var(--colon-bg-strength, 14%), transparent);
+}
+
+.markdown-editor > .is-colon-inline {
+  color: var(--colon-color, var(--colon-block));
+}
+
+.markdown-editor > .is-colon-inline.colon-depth-1 {
+  --colon-color: color-mix(in srgb, var(--colon-block) 42%, var(--text));
+}
+
+.markdown-editor > .is-colon-inline.colon-depth-2 {
+  --colon-color: color-mix(in srgb, var(--colon-block) 58%, var(--text));
+}
+
+.markdown-editor > .is-colon-block-start.colon-depth-3,
+.markdown-editor > .is-colon-block-end.colon-depth-3 {
+  --colon-color: #79aef0;
+  --colon-accent: #4d86dc;
+  --colon-border-width: 3px;
+  --colon-bg-strength: 12%;
+}
+
+.markdown-editor > .is-colon-block-start.colon-depth-4,
+.markdown-editor > .is-colon-block-end.colon-depth-4 {
+  --colon-color: #b8d8ff;
+  --colon-accent: #79b4ff;
+  --colon-border-width: 4px;
+  --colon-bg-strength: 20%;
+}
+
+.markdown-editor > .is-colon-block-start.colon-depth-5,
+.markdown-editor > .is-colon-block-end.colon-depth-5 {
+  --colon-color: #d2e8ff;
+  --colon-accent: #96c8ff;
+  --colon-border-width: 5px;
+  --colon-bg-strength: 28%;
+}
+
+.markdown-editor > .is-colon-block-start.colon-depth-6,
+.markdown-editor > .is-colon-block-end.colon-depth-6 {
+  --colon-color: #edf5ff;
+  --colon-accent: #b8daff;
+  --colon-border-width: 6px;
+  --colon-bg-strength: 36%;
+}
+
 .markdown-editor:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
@@ -610,6 +697,38 @@ details[open] > .tree-folder-header::before {
   content: "Start writing…";
   color: var(--muted);
   pointer-events: none;
+}
+
+.link-dialog {
+  width: min(420px, calc(100vw - 2rem));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.link-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.link-form {
+  margin: 0.75rem 1.25rem 1.25rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.link-field label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.link-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.15rem;
 }
 
 @media (max-width: 640px) {

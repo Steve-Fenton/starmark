@@ -68,16 +68,25 @@
       </section>
 
       <section id="edit-view" class="edit-view" hidden>
-        <div class="edit-header">
-          <button id="edit-back-btn" type="button" class="edit-back-btn" aria-label="Back to file list">
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-              <path fill="currentColor" d="M10.5 3.5 5 8l5.5 4.5-.875 1.125L3.25 8l6.375-5.625z"/>
-            </svg>
-            Back
-          </button>
-          <div class="edit-file-info">
-            <h2 id="edit-file-name" class="edit-file-name"></h2>
-            <p id="edit-file-path" class="edit-file-path"></p>
+        <div class="edit-sticky-bar">
+          <div class="edit-header">
+            <button id="edit-back-btn" type="button" class="edit-back-btn" aria-label="Back to file list">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path fill="currentColor" d="M10.5 3.5 5 8l5.5 4.5-.875 1.125L3.25 8l6.375-5.625z"/>
+              </svg>
+              Back
+            </button>
+            <div class="edit-file-info">
+              <h2 id="edit-file-name" class="edit-file-name"></h2>
+              <p id="edit-file-path" class="edit-file-path"></p>
+            </div>
+          </div>
+          <div class="edit-toolbar" role="toolbar" aria-label="Editor toolbar">
+            <button id="link-btn" type="button" class="toolbar-btn" aria-label="Insert link">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path fill="currentColor" d="M7.775 3.275 9.025 2.025a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"/>
+              </svg>
+            </button>
           </div>
         </div>
         <div
@@ -91,6 +100,28 @@
         ></div>
       </section>
     </main>
+
+    <dialog id="link-dialog" class="link-dialog">
+      <div class="dialog-header">
+        <h2>Insert link</h2>
+        <button id="link-dialog-close" type="button" class="dialog-close" aria-label="Close">
+          &times;
+        </button>
+      </div>
+      <form id="link-form" class="link-form">
+        <div class="link-field">
+          <label for="link-text">Link text</label>
+          <input id="link-text" type="text" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="link-field">
+          <label for="link-url">URL</label>
+          <input id="link-url" type="text" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="link-form-actions">
+          <button type="submit" class="primary">Done</button>
+        </div>
+      </form>
+    </dialog>
 
     <script src="/app.js" type="module"></script>
   </body>
