@@ -36,12 +36,108 @@ const EDIT_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="
 </svg>`;
 
 const HEADING_LINE_RE = /^(#{1,6})\s+(.*)$/;
+const CODE_FENCE_RE = /^```/;
+const CODE_FENCE_CLOSE_RE = /^```\s*$/;
+const EDITOR_LINE_SELECTOR = "p, h1, h2, h3, h4, h5, h6";
 
-function createEditorLineElement(line) {
+function getCodeBlockStates(lines) {
+  const states = [];
+  let inCodeBlock = false;
+
+  for (const line of lines) {
+    if (inCodeBlock) {
+      states.push(true);
+
+      if (CODE_FENCE_CLOSE_RE.test(line)) {
+        inCodeBlock = false;
+      }
+    } else if (CODE_FENCE_RE.test(line)) {
+      states.push(true);
+      inCodeBlock = true;
+    } else {
+      states.push(false);
+    }
+  }
+
+  return states;
+}
+
+function getLineElementTagName(line, inCodeBlock = false) {
+  if (inCodeBlock) {
+    return "p";
+  }
+
   const headingMatch = line.match(HEADING_LINE_RE);
 
   if (headingMatch) {
-    const element = document.createElement(`h${headingMatch[1].length}`);
+    return `h${headingMatch[1].length}`;
+  }
+
+  return "p";
+}
+
+function getEditorLineText(element) {
+  if (
+    element.tagName === "P" &&
+    element.childNodes.length === 1 &&
+    element.firstChild?.nodeName === "BR"
+  ) {
+    return "";
+  }
+
+  return element.textContent ?? "";
+}
+
+function getCaretOffsetInElement(element) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer)) {
+    return null;
+  }
+
+  const preRange = range.cloneRange();
+  preRange.selectNodeContents(element);
+  preRange.setEnd(range.startContainer, range.startOffset);
+  return preRange.toString().length;
+}
+
+function setCaretOffsetInElement(element, offset) {
+  const selection = window.getSelection();
+  const range = document.createRange();
+  let remaining = offset;
+
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let textNode = walker.nextNode();
+
+  while (textNode) {
+    const length = textNode.textContent.length;
+    if (remaining <= length) {
+      range.setStart(textNode, remaining);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return;
+    }
+
+    remaining -= length;
+    textNode = walker.nextNode();
+  }
+
+  range.selectNodeContents(element);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function createEditorLineElement(line, inCodeBlock = false) {
+  const tagName = getLineElementTagName(line, inCodeBlock);
+
+  if (tagName !== "p") {
+    const element = document.createElement(tagName);
     element.textContent = line;
     return element;
   }
@@ -53,14 +149,65 @@ function createEditorLineElement(line) {
     paragraph.textContent = line;
   }
 
+  if (inCodeBlock) {
+    paragraph.classList.add("is-code-block");
+  }
+
   return paragraph;
+}
+
+function reevaluateEditorLine(element, inCodeBlock = false) {
+  const line = getEditorLineText(element);
+  const expectedTag = getLineElementTagName(line, inCodeBlock);
+  const tagMatches = element.tagName.toLowerCase() === expectedTag;
+  const classMatches = element.classList.contains("is-code-block") === inCodeBlock;
+
+  if (tagMatches && classMatches) {
+    return element;
+  }
+
+  if (tagMatches) {
+    element.classList.toggle("is-code-block", inCodeBlock);
+    return element;
+  }
+
+  const caretOffset = getCaretOffsetInElement(element);
+  const nextElement = createEditorLineElement(line, inCodeBlock);
+  element.replaceWith(nextElement);
+
+  if (caretOffset !== null) {
+    setCaretOffsetInElement(nextElement, caretOffset);
+  }
+
+  return nextElement;
+}
+
+function reevaluateMarkdownEditorLines() {
+  if (markdownEditor.dataset.loading || !currentEditFile) {
+    return;
+  }
+
+  const lineElements = [...markdownEditor.children].filter((child) =>
+    child.matches(EDITOR_LINE_SELECTOR),
+  );
+  const lines = lineElements.map(getEditorLineText);
+  const codeBlockStates = getCodeBlockStates(lines);
+
+  lineElements.forEach((child, index) => {
+    reevaluateEditorLine(child, codeBlockStates[index]);
+  });
+
+  markdownEditor.classList.toggle("is-empty", markdownEditor.childElementCount === 0);
 }
 
 function renderMarkdownEditor(content) {
   markdownEditor.replaceChildren();
 
-  for (const line of content.split(/\r?\n/)) {
-    markdownEditor.append(createEditorLineElement(line));
+  const lines = content.split(/\r?\n/);
+  const codeBlockStates = getCodeBlockStates(lines);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    markdownEditor.append(createEditorLineElement(lines[index], codeBlockStates[index]));
   }
 
   markdownEditor.classList.toggle("is-empty", markdownEditor.childElementCount === 0);
@@ -696,6 +843,7 @@ projectsDialog.addEventListener("click", (event) => {
 });
 
 editBackBtn.addEventListener("click", showListView);
+markdownEditor.addEventListener("input", reevaluateMarkdownEditorLines);
 
 loadProjects().then(async () => {
   const projectFromUrl = getProjectFromUrl();

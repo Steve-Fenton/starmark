@@ -7,6 +7,7 @@
   --muted: #9aa4b8;
   --accent: #6ea8ff;
   --accent-hover: #8cbcff;
+  --code: #7ee787;
   --md: #7ee787;
   --mdx: #ffa657;
   --page-gradient: radial-gradient(circle at top, #1a2030 0%, var(--bg) 55%);
@@ -594,6 +595,10 @@ details[open] > .tree-folder-header::before {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.markdown-editor > .is-code-block {
+  color: var(--code);
 }
 
 .markdown-editor:focus {
