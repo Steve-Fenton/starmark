@@ -902,7 +902,7 @@ function ensureDefaultExpandedRoots(tree) {
   }
 
   for (const node of tree) {
-    if (node.type === "folder") {
+    if (node.type === "folder" || node.type === "page-folder") {
       expandedPaths.add(node.path);
     }
   }
@@ -910,7 +910,7 @@ function ensureDefaultExpandedRoots(tree) {
 
 function collectFolderPaths(nodes, paths = []) {
   for (const node of nodes) {
-    if (node.type !== "folder") {
+    if (node.type !== "folder" && node.type !== "page-folder") {
       continue;
     }
 
@@ -929,7 +929,7 @@ function countTreeContents(nodes) {
   let files = 0;
 
   for (const node of nodes) {
-    if (node.type === "folder") {
+    if (node.type === "folder" || node.type === "page-folder") {
       folders += 1;
       const nested = countTreeContents(node.children);
       folders += nested.folders;
@@ -1001,20 +1001,60 @@ function parseNavOrderFromFrontmatter(frontmatter) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function compareFolderFiles(a, b) {
-  const aIsIndex = isIndexFile(a.name);
-  const bIsIndex = isIndexFile(b.name);
+function getPageStemFromFileName(name) {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".mdx")) {
+    return name.slice(0, -4);
+  }
+  if (lower.endsWith(".md")) {
+    return name.slice(0, -3);
+  }
+
+  return null;
+}
+
+function getSortableNavOrder(node) {
+  if (node.type === "page-folder") {
+    return node.pageFile.navOrder ?? Number.MAX_SAFE_INTEGER;
+  }
+
+  return node.file?.navOrder ?? Number.MAX_SAFE_INTEGER;
+}
+
+function getSortableIndexName(node) {
+  if (node.type === "page-folder") {
+    return node.pageFile.name;
+  }
+
+  return node.name;
+}
+
+function getSortableDisplayName(node) {
+  if (node.type === "page-folder") {
+    return node.name;
+  }
+
+  return node.name;
+}
+
+function compareFolderItems(a, b) {
+  const aIsIndex = isIndexFile(getSortableIndexName(a));
+  const bIsIndex = isIndexFile(getSortableIndexName(b));
   if (aIsIndex !== bIsIndex) {
     return aIsIndex ? -1 : 1;
   }
 
-  const aOrder = a.file?.navOrder ?? Number.MAX_SAFE_INTEGER;
-  const bOrder = b.file?.navOrder ?? Number.MAX_SAFE_INTEGER;
+  const aOrder = getSortableNavOrder(a);
+  const bOrder = getSortableNavOrder(b);
   if (aOrder !== bOrder) {
     return aOrder - bOrder;
   }
 
-  return a.name.localeCompare(b.name);
+  return getSortableDisplayName(a).localeCompare(getSortableDisplayName(b));
+}
+
+function compareFolderFiles(a, b) {
+  return compareFolderItems(a, b);
 }
 
 function getParentRelativePath(relativePath) {
@@ -1232,21 +1272,54 @@ function buildFileTree(files, { directories = [], scanTargets = [] } = {}) {
     return folderMap.get(folderPath);
   }
 
-  function folderMapToNodes(folderMap) {
-    const folders = [...folderMap.values()].sort((a, b) =>
+  function buildFolderChildren(folder) {
+    const consumedPaths = new Set();
+    const plainSubfolders = [];
+    const pageFolders = [];
+
+    const sortedChildFolders = [...folder.childFolders.values()].sort((a, b) =>
       a.name.localeCompare(b.name),
     );
 
-    return folders.map((folder) => ({
-      type: "folder",
-      name: folder.name,
-      path: folder.path,
-      source: folder.source,
-      children: [
-        ...folderMapToNodes(folder.childFolders),
-        ...folder.files.sort(compareFolderFiles),
-      ],
-    }));
+    for (const childFolder of sortedChildFolders) {
+      const matchingFile = folder.files.find((fileEntry) => {
+        const stem = getPageStemFromFileName(fileEntry.name);
+        return stem === childFolder.name;
+      });
+
+      if (matchingFile) {
+        consumedPaths.add(matchingFile.path);
+        pageFolders.push({
+          type: "page-folder",
+          name: childFolder.name,
+          path: childFolder.path,
+          source: childFolder.source,
+          pageFile: matchingFile.file,
+          children: buildFolderChildren(childFolder),
+        });
+      } else {
+        plainSubfolders.push({
+          type: "folder",
+          name: childFolder.name,
+          path: childFolder.path,
+          source: childFolder.source,
+          children: buildFolderChildren(childFolder),
+        });
+      }
+    }
+
+    const remainingFiles = folder.files
+      .filter((fileEntry) => !consumedPaths.has(fileEntry.path))
+      .map((fileEntry) => ({
+        type: "file",
+        name: fileEntry.name,
+        path: fileEntry.path,
+        file: fileEntry.file,
+      }));
+
+    const sortableItems = [...pageFolders, ...remainingFiles].sort(compareFolderItems);
+
+    return [...plainSubfolders, ...sortableItems];
   }
 
   function ensureRoot(source, rootPath) {
@@ -1345,10 +1418,7 @@ function buildFileTree(files, { directories = [], scanTargets = [] } = {}) {
       name: root.name,
       path: root.path === "__project__" ? "" : root.path,
       source: root.source,
-      children: [
-        ...folderMapToNodes(root.childFolders),
-        ...root.files.sort(compareFolderFiles),
-      ],
+      children: buildFolderChildren(root),
     }));
 }
 
@@ -1809,6 +1879,42 @@ function formatScanInfo(scanTargets) {
   return `Scanning ${labels.join(" and ")}`;
 }
 
+function appendMoveButtons(actions, file, { isSearching = false } = {}) {
+  if (isSearching) {
+    return;
+  }
+
+  const { canMoveUp, canMoveDown } = getMoveState(file);
+
+  const upBtn = document.createElement("button");
+  upBtn.type = "button";
+  upBtn.className = "tree-action-btn move-btn";
+  upBtn.innerHTML = ARROW_UP_ICON;
+  upBtn.title = `Move ${file.name} up`;
+  upBtn.setAttribute("aria-label", `Move ${file.name} up`);
+  upBtn.disabled = !canMoveUp;
+  upBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    moveFileInFolder(file, "up");
+  });
+
+  const downBtn = document.createElement("button");
+  downBtn.type = "button";
+  downBtn.className = "tree-action-btn move-btn";
+  downBtn.innerHTML = ARROW_DOWN_ICON;
+  downBtn.title = `Move ${file.name} down`;
+  downBtn.setAttribute("aria-label", `Move ${file.name} down`);
+  downBtn.disabled = !canMoveDown;
+  downBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    moveFileInFolder(file, "down");
+  });
+
+  actions.append(upBtn, downBtn);
+}
+
 function createFileRow(node, depth, { isSearching = false } = {}) {
   const file = node.file;
   const item = document.createElement("li");
@@ -1827,37 +1933,7 @@ function createFileRow(node, depth, { isSearching = false } = {}) {
   const actions = document.createElement("div");
   actions.className = "file-actions";
 
-  if (!isSearching) {
-    const { canMoveUp, canMoveDown } = getMoveState(file);
-
-    const upBtn = document.createElement("button");
-    upBtn.type = "button";
-    upBtn.className = "tree-action-btn move-btn";
-    upBtn.innerHTML = ARROW_UP_ICON;
-    upBtn.title = `Move ${file.name} up`;
-    upBtn.setAttribute("aria-label", `Move ${file.name} up`);
-    upBtn.disabled = !canMoveUp;
-    upBtn.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      moveFileInFolder(file, "up");
-    });
-
-    const downBtn = document.createElement("button");
-    downBtn.type = "button";
-    downBtn.className = "tree-action-btn move-btn";
-    downBtn.innerHTML = ARROW_DOWN_ICON;
-    downBtn.title = `Move ${file.name} down`;
-    downBtn.setAttribute("aria-label", `Move ${file.name} down`);
-    downBtn.disabled = !canMoveDown;
-    downBtn.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      moveFileInFolder(file, "down");
-    });
-
-    actions.append(upBtn, downBtn);
-  }
+  appendMoveButtons(actions, file, { isSearching });
 
   const editBtn = document.createElement("button");
   editBtn.type = "button";
@@ -1886,6 +1962,135 @@ function createFileRow(node, depth, { isSearching = false } = {}) {
   actions.append(editBtn, deleteBtn);
   item.append(extBadge, name, actions);
   return item;
+}
+
+function createPageFolderRow(node, depth, { isSearching = false } = {}) {
+  const { pageFile } = node;
+  const item = document.createElement("li");
+  item.className = "tree-folder tree-page-folder";
+  item.style.setProperty("--depth", depth);
+
+  const details = document.createElement("details");
+  details.open = isSearching || expandedPaths.has(node.path);
+
+  details.addEventListener("toggle", () => {
+    if (details.open) {
+      expandedPaths.add(node.path);
+    } else {
+      expandedPaths.delete(node.path);
+    }
+    saveExpandedPaths();
+  });
+
+  const summary = document.createElement("summary");
+  summary.className = "tree-folder-header";
+
+  const pageBadge = document.createElement("span");
+  pageBadge.className = "badge page";
+  pageBadge.textContent = "page folder";
+
+  const label = document.createElement("span");
+  label.className = "tree-folder-name";
+  label.textContent = node.name;
+  label.title = pageFile.relativePath;
+
+  summary.append(pageBadge, label);
+
+  const { folders: folderCount, files: nestedFileCount } = countTreeContents(node.children);
+  const countParts = [];
+
+  if (folderCount > 0) {
+    countParts.push(folderCount === 1 ? "1 folder" : `${folderCount} folders`);
+  }
+
+  if (nestedFileCount > 0) {
+    countParts.push(nestedFileCount === 1 ? "1 file" : `${nestedFileCount} files`);
+  }
+
+  if (countParts.length > 0) {
+    const count = document.createElement("span");
+    count.className = "tree-folder-count";
+    count.textContent = countParts.join(", ");
+    summary.append(count);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "file-actions";
+
+  appendMoveButtons(actions, pageFile, { isSearching });
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "edit-btn";
+  editBtn.innerHTML = EDIT_ICON;
+  editBtn.title = `Edit ${pageFile.name}`;
+  editBtn.setAttribute("aria-label", `Edit ${pageFile.name}`);
+  editBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openEditView(pageFile);
+  });
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "tree-action-btn add-btn";
+  addBtn.innerHTML = ADD_ICON;
+  addBtn.title = `Add to ${node.name}`;
+  addBtn.setAttribute("aria-label", `Add file or folder to ${node.name}`);
+  addBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openNewItemDialog(node.path);
+  });
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "tree-action-btn delete-btn";
+  deleteBtn.innerHTML = DELETE_ICON;
+  deleteBtn.title = `Delete ${node.name}`;
+  deleteBtn.setAttribute("aria-label", `Delete page folder ${node.name}`);
+  deleteBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openConfirmDeleteDialog({
+      type: "page-folder",
+      name: node.name,
+      relativePath: node.path,
+      pageFilePath: pageFile.relativePath,
+      pageFileName: pageFile.name,
+    });
+  });
+
+  actions.append(editBtn, addBtn, deleteBtn);
+  summary.append(actions);
+
+  details.append(summary);
+
+  if (node.children.length > 0) {
+    const children = document.createElement("ul");
+    children.className = "tree-children";
+
+    for (const child of node.children) {
+      children.append(createTreeRow(child, depth + 1, { isSearching }));
+    }
+
+    details.append(children);
+  }
+
+  item.append(details);
+  return item;
+}
+
+function createTreeRow(node, depth, { isSearching = false } = {}) {
+  if (node.type === "folder") {
+    return createFolderRow(node, depth, { isSearching });
+  }
+
+  if (node.type === "page-folder") {
+    return createPageFolderRow(node, depth, { isSearching });
+  }
+
+  return createFileRow(node, depth, { isSearching });
 }
 
 function createFolderRow(node, depth, { isSearching }) {
@@ -1984,11 +2189,7 @@ function createFolderRow(node, depth, { isSearching }) {
     children.className = "tree-children";
 
     for (const child of node.children) {
-      if (child.type === "folder") {
-        children.append(createFolderRow(child, depth + 1, { isSearching }));
-      } else {
-        children.append(createFileRow(child, depth + 1, { isSearching }));
-      }
+      children.append(createTreeRow(child, depth + 1, { isSearching }));
     }
 
     details.append(children);
@@ -2148,6 +2349,49 @@ function removeExpandedPathsUnder(deletedPath) {
   saveExpandedPaths();
 }
 
+async function deletePageFolder(entry) {
+  if (!currentProjectPath) {
+    return { ok: false, error: "Choose a project folder first" };
+  }
+
+  setBusy(true);
+  clearError();
+
+  try {
+    for (const relativePath of [entry.relativePath, entry.pageFilePath]) {
+      const response = await fetch("/api/entry", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectPath: currentProjectPath,
+          relativePath,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { ok: false, error: data.error ?? "Could not delete entry" };
+      }
+    }
+
+    if (
+      currentEditFile &&
+      (isPathInsideDeletedEntry(currentEditFile.relativePath, entry.relativePath) ||
+        isPathInsideDeletedEntry(currentEditFile.relativePath, entry.pageFilePath))
+    ) {
+      showListView();
+    }
+
+    removeExpandedPathsUnder(entry.relativePath);
+    await refreshScan();
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Could not delete page folder" };
+  } finally {
+    setBusy(false);
+  }
+}
+
 async function deleteEntry(relativePath) {
   if (!currentProjectPath) {
     return { ok: false, error: "Choose a project folder first" };
@@ -2260,7 +2504,10 @@ function createConfirmDeleteDialog() {
     clearDialogError();
     setDialogBusy(true);
 
-    const result = await deleteEntry(pendingEntry.relativePath);
+    const result =
+      pendingEntry.type === "page-folder"
+        ? await deletePageFolder(pendingEntry)
+        : await deleteEntry(pendingEntry.relativePath);
     if (!result.ok) {
       setDialogBusy(false);
       showDialogError(result.error);
@@ -2277,6 +2524,9 @@ function createConfirmDeleteDialog() {
     if (entry.type === "folder") {
       titleEl.textContent = "Delete folder?";
       messageEl.textContent = `Delete "${entry.name}" and everything inside it? This cannot be undone.`;
+    } else if (entry.type === "page-folder") {
+      titleEl.textContent = "Delete page folder?";
+      messageEl.textContent = `Delete "${entry.name}", its contents, and "${entry.pageFileName}"? This cannot be undone.`;
     } else {
       titleEl.textContent = "Delete file?";
       messageEl.textContent = `Delete "${entry.name}"? This cannot be undone.`;
