@@ -1598,9 +1598,14 @@ function setFileInUrl(filePath) {
   window.history.replaceState({}, "", url);
 }
 
+function scrollMainToTop() {
+  window.scrollTo(0, 0);
+}
+
 function showListView() {
   listView.hidden = false;
   editView.hidden = true;
+  scrollMainToTop();
   currentEditFile = null;
   currentEditFrontmatter = null;
   frontmatterPanel.hidden = true;
@@ -1797,6 +1802,7 @@ function handleFrontmatterInput() {
 function showEditView() {
   listView.hidden = true;
   editView.hidden = false;
+  scrollMainToTop();
 }
 
 async function openEditView(file) {
