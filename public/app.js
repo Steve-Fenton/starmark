@@ -1861,6 +1861,50 @@ function formatScanInfo(scanTargets) {
   return `Scanning ${labels.join(" and ")}`;
 }
 
+function createTreeContentsCountColumns(folderCount, fileCount) {
+  const folderCol = document.createElement("span");
+  folderCol.className = "tree-folder-count-col folders";
+  if (folderCount === 0) {
+    folderCol.classList.add("is-empty");
+  }
+  folderCol.innerHTML = `${icons.folder}<span class="tree-folder-count-value">${folderCount}</span>`;
+  folderCol.setAttribute(
+    "aria-label",
+    folderCount === 1 ? "1 folder" : `${folderCount} folders`,
+  );
+
+  const fileCol = document.createElement("span");
+  fileCol.className = "tree-folder-count-col files";
+  if (fileCount === 0) {
+    fileCol.classList.add("is-empty");
+  }
+  fileCol.innerHTML = `${icons.fileText}<span class="tree-folder-count-value">${fileCount}</span>`;
+  fileCol.setAttribute("aria-label", fileCount === 1 ? "1 file" : `${fileCount} files`);
+
+  return { folderCol, fileCol };
+}
+
+function createFolderMain(...elements) {
+  const main = document.createElement("div");
+  main.className = "tree-folder-main";
+  main.append(...elements);
+  return main;
+}
+
+function createFolderPrefix(...elements) {
+  const prefix = document.createElement("div");
+  prefix.className = "tree-folder-prefix";
+  prefix.append(...elements);
+  return prefix;
+}
+
+function createFolderChevron() {
+  const chevron = document.createElement("span");
+  chevron.className = "tree-folder-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  return chevron;
+}
+
 function createFolderBadge() {
   const badge = document.createElement("span");
   badge.className = "badge folder";
@@ -1932,6 +1976,12 @@ function createFileRow(node, depth, { isSearching = false } = {}) {
   name.textContent = file.name;
   name.title = file.relativePath;
 
+  const main = document.createElement("div");
+  main.className = "tree-file-main";
+  main.append(extBadge, name);
+
+  const { folderCol, fileCol } = createTreeContentsCountColumns(0, 0);
+
   const actions = document.createElement("div");
   actions.className = "file-actions";
 
@@ -1962,7 +2012,7 @@ function createFileRow(node, depth, { isSearching = false } = {}) {
   });
 
   actions.append(editBtn, deleteBtn);
-  item.append(extBadge, name, actions);
+  item.append(main, folderCol, fileCol, actions);
   return item;
 }
 
@@ -1996,25 +2046,14 @@ function createPageFolderRow(node, depth, { isSearching = false } = {}) {
   label.textContent = node.name;
   label.title = pageFile.relativePath;
 
-  summary.append(pageBadge, label);
-
   const { folders: folderCount, files: nestedFileCount } = countTreeContents(node.children);
-  const countParts = [];
+  const { folderCol, fileCol } = createTreeContentsCountColumns(folderCount, nestedFileCount);
 
-  if (folderCount > 0) {
-    countParts.push(folderCount === 1 ? "1 folder" : `${folderCount} folders`);
-  }
-
-  if (nestedFileCount > 0) {
-    countParts.push(nestedFileCount === 1 ? "1 file" : `${nestedFileCount} files`);
-  }
-
-  if (countParts.length > 0) {
-    const count = document.createElement("span");
-    count.className = "tree-folder-count";
-    count.textContent = countParts.join(", ");
-    summary.append(count);
-  }
+  summary.append(
+    createFolderMain(createFolderPrefix(pageBadge, createFolderChevron()), label),
+    folderCol,
+    fileCol,
+  );
 
   const actions = document.createElement("div");
   actions.className = "file-actions";
@@ -2119,32 +2158,27 @@ function createFolderRow(node, depth, { isSearching }) {
   label.className = "tree-folder-name";
   label.textContent = depth === 0 ? (node.path || node.name) : node.name;
 
-  if (depth > 0) {
-    summary.append(createFolderBadge(), label);
-  } else {
-    summary.append(label);
-  }
-
-  if (depth === 0 && node.source) {
-    summary.append(createSourceBadge(node.source));
-  }
-
   const { folders: folderCount, files: nestedFileCount } = countTreeContents(node.children);
-  const countParts = [];
+  const { folderCol, fileCol } = createTreeContentsCountColumns(folderCount, nestedFileCount);
 
-  if (folderCount > 0) {
-    countParts.push(folderCount === 1 ? "1 folder" : `${folderCount} folders`);
-  }
-
-  if (nestedFileCount > 0) {
-    countParts.push(nestedFileCount === 1 ? "1 file" : `${nestedFileCount} files`);
-  }
-
-  if (countParts.length > 0) {
-    const count = document.createElement("span");
-    count.className = "tree-folder-count";
-    count.textContent = countParts.join(", ");
-    summary.append(count);
+  if (depth > 0) {
+    summary.append(
+      createFolderMain(createFolderPrefix(createFolderBadge(), createFolderChevron()), label),
+      folderCol,
+      fileCol,
+    );
+  } else if (depth === 0 && node.source) {
+    summary.append(
+      createFolderMain(createFolderPrefix(createSourceBadge(node.source), createFolderChevron()), label),
+      folderCol,
+      fileCol,
+    );
+  } else {
+    summary.append(
+      createFolderMain(createFolderPrefix(createFolderChevron()), label),
+      folderCol,
+      fileCol,
+    );
   }
 
   const actions = document.createElement("div");

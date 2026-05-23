@@ -14,6 +14,15 @@
   --md: #7ee787;
   --mdx: #ffa657;
   --page-gradient: radial-gradient(circle at top, #1a2030 0%, var(--bg) 55%);
+  --font-mono:
+    "SF Mono",
+    ui-monospace,
+    "Cascadia Code",
+    "Source Code Pro",
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
   font-family:
     "SF Pro Text",
     -apple-system,
@@ -296,6 +305,10 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
+  --tree-indent: 1.15rem;
+  --tree-count-num-width: 3ch;
+  --tree-count-col-width: calc(1rem + 0.2rem + var(--tree-count-num-width));
+  --tree-actions-col-width: 11rem;
 }
 
 .file-tree > .tree-folder > details > summary {
@@ -307,15 +320,36 @@ button:disabled {
 }
 
 .tree-folder-header {
-  display: flex;
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    var(--tree-count-col-width)
+    var(--tree-count-col-width)
+    var(--tree-actions-col-width);
   align-items: center;
   gap: 0.65rem;
   padding: 0.75rem 1rem;
-  padding-left: calc(1rem + var(--depth, 0) * 1.15rem);
   border-top: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
   list-style: none;
+}
+
+.tree-folder-main,
+.tree-file-main {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  padding-left: calc(1rem + var(--depth, 0) * var(--tree-indent));
+}
+
+.tree-folder-prefix {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .tree-folder-header:hover {
@@ -326,8 +360,7 @@ button:disabled {
   display: none;
 }
 
-.tree-folder-header::before {
-  content: "";
+.tree-folder-chevron {
   width: 0.45rem;
   height: 0.45rem;
   border-right: 2px solid var(--muted);
@@ -337,24 +370,50 @@ button:disabled {
   flex-shrink: 0;
 }
 
-details[open] > .tree-folder-header::before {
+details[open] > .tree-folder-header .tree-folder-chevron {
   transform: rotate(45deg);
 }
 
-.tree-folder-name {
-  flex: 1;
+.tree-folder-name,
+.tree-file .file-name {
   min-width: 0;
+  flex: 1;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.tree-folder-count {
+.tree-folder-count-col {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.2rem;
   color: var(--muted);
   font-size: 0.8rem;
-  white-space: nowrap;
+}
+
+.tree-folder-count-col svg {
+  display: block;
   flex-shrink: 0;
+}
+
+.tree-folder-count-col.is-empty {
+  opacity: 0.2;
+}
+
+.tree-folder-count-value {
+  display: block;
+  width: var(--tree-count-num-width);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tree-folder-header .file-actions,
+.tree-file .file-actions {
+  margin-left: 0;
+  justify-self: end;
 }
 
 .tree-children {
@@ -364,25 +423,21 @@ details[open] > .tree-folder-header::before {
 }
 
 .tree-file {
-  display: flex;
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    var(--tree-count-col-width)
+    var(--tree-count-col-width)
+    var(--tree-actions-col-width);
   align-items: center;
   gap: 0.65rem;
   padding: 0.65rem 1rem;
-  padding-left: calc(1rem + var(--depth, 0) * 1.15rem);
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
 }
 
 .tree-file:hover {
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-}
-
-.tree-file .file-name {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .file-list li {
@@ -738,15 +793,7 @@ details[open] > .tree-folder-header::before {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
-  font-family:
-    "SF Mono",
-    ui-monospace,
-    "Cascadia Code",
-    "Source Code Pro",
-    Menlo,
-    Monaco,
-    Consolas,
-    monospace;
+  font-family: var(--font-mono);
   font-size: 1rem;
   line-height: 1.6;
   word-break: break-word;
