@@ -42,6 +42,8 @@ const imageAltInput = document.getElementById("image-alt");
 const imageLazyInput = document.getElementById("image-lazy");
 const imageCaptionInput = document.getElementById("image-caption");
 const imageBackBtn = document.getElementById("image-back-btn");
+const undoBtn = document.getElementById("undo-btn");
+const redoBtn = document.getElementById("redo-btn");
 const topBar = document.querySelector(".top-bar");
 
 let projectButtons = [];
@@ -54,6 +56,13 @@ let savedLinkRange = null;
 let savedEditorCaret = null;
 let currentMediaDir = "img";
 let pendingImage = null;
+let editorHistory = [];
+let editorHistoryIndex = -1;
+let editorHistoryDebounce = null;
+let isApplyingEditorHistory = false;
+
+const HISTORY_DEBOUNCE_MS = 400;
+const MAX_EDITOR_HISTORY = 100;
 
 const SOURCE_ROOTS = {
   content: "src/content",
@@ -285,6 +294,12 @@ function setCaretOffsetInElement(element, offset) {
   selection.addRange(range);
 }
 
+function updateUndoRedoShortcutLabels() {
+  const isMac = navigator.platform.toUpperCase().includes("MAC");
+  undoBtn.title = isMac ? "Undo (⌘Z)" : "Undo (Ctrl+Z)";
+  redoBtn.title = isMac ? "Redo (⌘⇧Z)" : "Redo (Ctrl+Shift+Z)";
+}
+
 function syncTopBarHeight() {
   if (topBar) {
     document.documentElement.style.setProperty("--top-bar-height", `${topBar.offsetHeight}px`);
@@ -382,6 +397,155 @@ function getEditorLines() {
   return getEditorLineElements().map(getEditorLineText);
 }
 
+function getEditorContent() {
+  return getEditorLines().join("\n");
+}
+
+function getEditorCaretSnapshot() {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!markdownEditor.contains(range.commonAncestorContainer)) {
+    return null;
+  }
+
+  const lineElements = getEditorLineElements();
+
+  for (let lineIndex = 0; lineIndex < lineElements.length; lineIndex += 1) {
+    const element = lineElements[lineIndex];
+    if (!element.contains(range.startContainer) && element !== range.startContainer) {
+      continue;
+    }
+
+    const offset = getCaretOffsetInElement(element);
+    if (offset !== null) {
+      return { lineIndex, offset };
+    }
+  }
+
+  return { lineIndex: lineElements.length, offset: 0 };
+}
+
+function restoreEditorCaretSnapshot(caret) {
+  const lineElements = getEditorLineElements();
+
+  if (!caret || lineElements.length === 0) {
+    markdownEditor.focus();
+    return;
+  }
+
+  const element = lineElements[Math.min(caret.lineIndex, lineElements.length - 1)];
+  if (!element) {
+    markdownEditor.focus();
+    return;
+  }
+
+  const maxOffset = getEditorLineText(element).length;
+  setCaretOffsetInElement(element, Math.min(caret.offset, maxOffset));
+  markdownEditor.focus();
+}
+
+function createEditorHistorySnapshot() {
+  return {
+    content: getEditorContent(),
+    caret: getEditorCaretSnapshot(),
+  };
+}
+
+function updateUndoRedoButtons() {
+  undoBtn.disabled = editorHistoryIndex <= 0;
+  redoBtn.disabled = editorHistoryIndex >= editorHistory.length - 1;
+}
+
+function resetEditorHistory(content) {
+  clearTimeout(editorHistoryDebounce);
+  editorHistoryDebounce = null;
+  editorHistory = [{ content, caret: null }];
+  editorHistoryIndex = 0;
+  updateUndoRedoButtons();
+}
+
+function trimEditorHistory() {
+  if (editorHistory.length <= MAX_EDITOR_HISTORY) {
+    return;
+  }
+
+  const overflow = editorHistory.length - MAX_EDITOR_HISTORY;
+  editorHistory = editorHistory.slice(overflow);
+  editorHistoryIndex = Math.max(0, editorHistoryIndex - overflow);
+}
+
+function commitEditorHistory() {
+  if (isApplyingEditorHistory || markdownEditor.dataset.loading || !currentEditFile) {
+    return;
+  }
+
+  const snapshot = createEditorHistorySnapshot();
+  const currentSnapshot = editorHistory[editorHistoryIndex];
+
+  if (currentSnapshot && snapshot.content === currentSnapshot.content) {
+    return;
+  }
+
+  editorHistory = editorHistory.slice(0, editorHistoryIndex + 1);
+  editorHistory.push(snapshot);
+  editorHistoryIndex = editorHistory.length - 1;
+  trimEditorHistory();
+  updateUndoRedoButtons();
+}
+
+function flushEditorHistory() {
+  clearTimeout(editorHistoryDebounce);
+  editorHistoryDebounce = null;
+  commitEditorHistory();
+}
+
+function scheduleEditorHistoryCommit() {
+  clearTimeout(editorHistoryDebounce);
+  editorHistoryDebounce = setTimeout(commitEditorHistory, HISTORY_DEBOUNCE_MS);
+}
+
+function applyEditorHistorySnapshot(index) {
+  const snapshot = editorHistory[index];
+  if (!snapshot) {
+    return;
+  }
+
+  isApplyingEditorHistory = true;
+  clearTimeout(editorHistoryDebounce);
+  editorHistoryDebounce = null;
+  renderMarkdownEditor(snapshot.content);
+  restoreEditorCaretSnapshot(snapshot.caret);
+  editorHistoryIndex = index;
+  isApplyingEditorHistory = false;
+  updateUndoRedoButtons();
+}
+
+function undoEditorChange() {
+  if (editorHistoryIndex <= 0) {
+    return;
+  }
+
+  applyEditorHistorySnapshot(editorHistoryIndex - 1);
+}
+
+function redoEditorChange() {
+  if (editorHistoryIndex >= editorHistory.length - 1) {
+    return;
+  }
+
+  applyEditorHistorySnapshot(editorHistoryIndex + 1);
+}
+
+function runEditorHistoryAction(action) {
+  flushEditorHistory();
+  action();
+  flushEditorHistory();
+}
+
 function insertMarkdownAtCaret(markdown) {
   if (!savedEditorCaret) {
     return false;
@@ -413,6 +577,7 @@ function insertMarkdownAtCaret(markdown) {
   }
 
   savedEditorCaret = null;
+  flushEditorHistory();
   markdownEditor.focus();
   return true;
 }
@@ -479,6 +644,8 @@ function submitImageForm(event) {
   if (!pendingImage) {
     return;
   }
+
+  flushEditorHistory();
 
   if (
     insertImageFigure(pendingImage.webPath, {
@@ -661,6 +828,7 @@ function insertMarkdownLinkAtSelection(linkText, url) {
 
   savedLinkRange = null;
   reevaluateMarkdownEditorLines();
+  flushEditorHistory();
   markdownEditor.focus();
   return true;
 }
@@ -675,6 +843,8 @@ function openLinkDialog() {
 
 function submitLinkDialog(event) {
   event.preventDefault();
+
+  flushEditorHistory();
 
   if (!insertMarkdownLinkAtSelection(linkTextInput.value, linkUrlInput.value)) {
     linkUrlInput.focus();
@@ -1103,6 +1273,7 @@ async function openEditView(file) {
   editFilePath.textContent = file.relativePath;
   editFilePath.title = file.absolutePath;
   renderMarkdownEditor("");
+  resetEditorHistory("");
   markdownEditor.dataset.loading = "true";
 
   try {
@@ -1120,6 +1291,7 @@ async function openEditView(file) {
 
     currentEditFrontmatter = data.frontmatter ?? null;
     renderMarkdownEditor(data.content);
+    resetEditorHistory(data.content);
   } catch {
     if (currentEditFile?.absolutePath === file.absolutePath) {
       setMarkdownEditorMessage("Could not load file");
@@ -1427,18 +1599,59 @@ projectsDialog.addEventListener("click", (event) => {
 });
 
 editBackBtn.addEventListener("click", showListView);
-markdownEditor.addEventListener("input", reevaluateMarkdownEditorLines);
+markdownEditor.addEventListener("input", () => {
+  reevaluateMarkdownEditorLines();
+  scheduleEditorHistoryCommit();
+});
+
+markdownEditor.addEventListener("beforeinput", (event) => {
+  if (event.inputType === "historyUndo") {
+    event.preventDefault();
+    undoEditorChange();
+  } else if (event.inputType === "historyRedo") {
+    event.preventDefault();
+    redoEditorChange();
+  }
+});
+
+markdownEditor.addEventListener("keydown", (event) => {
+  const isMod = event.metaKey || event.ctrlKey;
+  if (!isMod) {
+    return;
+  }
+
+  const key = event.key.toLowerCase();
+  if (key === "z" && !event.shiftKey) {
+    event.preventDefault();
+    undoEditorChange();
+  } else if (key === "z" && event.shiftKey) {
+    event.preventDefault();
+    redoEditorChange();
+  } else if (key === "y") {
+    event.preventDefault();
+    redoEditorChange();
+  }
+});
+
+attachToolbarButton(undoBtn, undoEditorChange);
+attachToolbarButton(redoBtn, redoEditorChange);
 
 attachToolbarButton(boldBtn, () => {
-  wrapEditorSelection("**");
+  runEditorHistoryAction(() => {
+    wrapEditorSelection("**");
+  });
 });
 
 attachToolbarButton(italicBtn, () => {
-  wrapEditorSelection("*");
+  runEditorHistoryAction(() => {
+    wrapEditorSelection("*");
+  });
 });
 
 attachToolbarButton(strikethroughBtn, () => {
-  wrapEditorSelection("~~");
+  runEditorHistoryAction(() => {
+    wrapEditorSelection("~~");
+  });
 });
 
 attachToolbarButton(linkBtn, openLinkDialog);
@@ -1497,6 +1710,7 @@ imageAltInput.addEventListener("keydown", (event) => {
 });
 
 syncTopBarHeight();
+updateUndoRedoShortcutLabels();
 window.addEventListener("resize", syncTopBarHeight);
 
 loadProjects().then(async () => {
