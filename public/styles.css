@@ -448,20 +448,20 @@ details[open] > .tree-folder-header::before {
   color: var(--muted);
 }
 
+.badge.folder {
+  min-width: 0;
+  width: fit-content;
+  white-space: nowrap;
+  background: color-mix(in srgb, #79c0ff 18%, transparent);
+  color: #79c0ff;
+}
+
 .badge.page {
   min-width: 0;
   width: fit-content;
   white-space: nowrap;
   background: color-mix(in srgb, #f2cc60 18%, transparent);
   color: #f2cc60;
-}
-
-.tree-page-folder > details > summary {
-  background: color-mix(in srgb, #f2cc60 5%, var(--surface));
-}
-
-.tree-page-folder > details > summary:hover {
-  background: color-mix(in srgb, #f2cc60 10%, var(--surface));
 }
 
 .file-meta {

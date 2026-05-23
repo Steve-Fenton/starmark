@@ -1861,6 +1861,13 @@ function formatScanInfo(scanTargets) {
   return `Scanning ${labels.join(" and ")}`;
 }
 
+function createFolderBadge() {
+  const badge = document.createElement("span");
+  badge.className = "badge folder";
+  badge.innerHTML = `${icons.folder}<span>folder</span>`;
+  return badge;
+}
+
 function createSourceBadge(source) {
   const sourceIcons = {
     content: icons.fileText,
@@ -2111,7 +2118,12 @@ function createFolderRow(node, depth, { isSearching }) {
   const label = document.createElement("span");
   label.className = "tree-folder-name";
   label.textContent = depth === 0 ? (node.path || node.name) : node.name;
-  summary.append(label);
+
+  if (depth > 0) {
+    summary.append(createFolderBadge(), label);
+  } else {
+    summary.append(label);
+  }
 
   if (depth === 0 && node.source) {
     summary.append(createSourceBadge(node.source));
