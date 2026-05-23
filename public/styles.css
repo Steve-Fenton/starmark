@@ -490,6 +490,12 @@ details[open] > .tree-folder-header::before {
   cursor: pointer;
 }
 
+.tree-action-btn.move-btn:disabled,
+.edit-btn.move-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .tree-action-btn.delete-btn:hover:not(:disabled),
 .edit-btn.delete-btn:hover:not(:disabled) {
   border-color: color-mix(in srgb, #ff8b8b 45%, var(--border));

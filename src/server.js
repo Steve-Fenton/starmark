@@ -112,6 +112,7 @@ async function findMarkdownFiles(dir, { source, pathPrefix, baseDir = dir } = {}
     if (ext !== ".md" && ext !== ".mdx") continue;
 
     const relativeWithinRoot = path.relative(baseDir, fullPath);
+    const navOrder = await readFileNavOrder(fullPath);
     files.push({
       name: entry.name,
       relativePath: pathPrefix
@@ -120,6 +121,7 @@ async function findMarkdownFiles(dir, { source, pathPrefix, baseDir = dir } = {}
       absolutePath: fullPath,
       extension: ext.slice(1),
       source: source ?? "project",
+      navOrder,
     });
   }
 
@@ -282,6 +284,38 @@ function splitFrontmatter(content) {
     frontmatter: match[1],
     body: content.slice(match[0].length),
   };
+}
+
+function parseNavOrder(frontmatter) {
+  if (!frontmatter) {
+    return null;
+  }
+
+  const match = frontmatter.match(/^navOrder:\s*(.+)$/m);
+  if (!match) {
+    return null;
+  }
+
+  let value = match[1].trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function readFileNavOrder(filePath) {
+  try {
+    const content = await fs.readFile(filePath, "utf8");
+    const { frontmatter } = splitFrontmatter(content);
+    return parseNavOrder(frontmatter);
+  } catch {
+    return null;
+  }
 }
 
 async function readSavedProjects() {

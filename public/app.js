@@ -61,6 +61,14 @@ const DELETE_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden
   <path fill="currentColor" d="M5.5 5.5v6h1v-6h-1zm2 0v6h1v-6h-1zm2.5 0v6h1v-6h-1zM3.5 3h1v-.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3h3.5v1h-1v8.5c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5V4h-1V3h3.5zm2-1.5a.5.5 0 0 0-.5.5V3h7v-.5a.5.5 0 0 0-.5-.5H6z"/>
 </svg>`;
 
+const ARROW_UP_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+  <path fill="currentColor" d="M8 4.5 3.5 9h9L8 4.5z"/>
+</svg>`;
+
+const ARROW_DOWN_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+  <path fill="currentColor" d="M8 11.5 12.5 7h-9L8 11.5z"/>
+</svg>`;
+
 const HEADING_LINE_RE = /^(#{1,6})\s+(.*)$/;
 const CODE_FENCE_RE = /^```/;
 const CODE_FENCE_CLOSE_RE = /^```\s*$/;
@@ -966,6 +974,246 @@ function resolveTreePath(relativePath, sourceHint) {
   };
 }
 
+function isIndexFile(name) {
+  const lower = name.toLowerCase();
+  return lower === "index.md" || lower === "index.mdx";
+}
+
+function parseNavOrderFromFrontmatter(frontmatter) {
+  if (!frontmatter) {
+    return null;
+  }
+
+  const match = frontmatter.match(/^navOrder:\s*(.+)$/m);
+  if (!match) {
+    return null;
+  }
+
+  let value = match[1].trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function compareFolderFiles(a, b) {
+  const aIsIndex = isIndexFile(a.name);
+  const bIsIndex = isIndexFile(b.name);
+  if (aIsIndex !== bIsIndex) {
+    return aIsIndex ? -1 : 1;
+  }
+
+  const aOrder = a.file?.navOrder ?? Number.MAX_SAFE_INTEGER;
+  const bOrder = b.file?.navOrder ?? Number.MAX_SAFE_INTEGER;
+  if (aOrder !== bOrder) {
+    return aOrder - bOrder;
+  }
+
+  return a.name.localeCompare(b.name);
+}
+
+function getParentRelativePath(relativePath) {
+  const normalized = normalizeRelativePath(relativePath);
+  const lastSlash = normalized.lastIndexOf("/");
+  return lastSlash === -1 ? "" : normalized.slice(0, lastSlash);
+}
+
+function toSortableFile(file) {
+  return {
+    type: "file",
+    name: file.name,
+    path: file.relativePath,
+    file,
+  };
+}
+
+function getFolderSiblings(relativePath) {
+  const parentPath = getParentRelativePath(relativePath);
+
+  return scannedFiles
+    .filter((file) => getParentRelativePath(file.relativePath) === parentPath)
+    .map(toSortableFile)
+    .sort(compareFolderFiles);
+}
+
+function findAdjacentSiblingIndex(siblings, currentIndex, direction) {
+  if (direction === "up") {
+    for (let index = currentIndex - 1; index >= 0; index -= 1) {
+      if (!isIndexFile(siblings[index].name)) {
+        return index;
+      }
+    }
+
+    return -1;
+  }
+
+  for (let index = currentIndex + 1; index < siblings.length; index += 1) {
+    if (!isIndexFile(siblings[index].name)) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function assignNavOrders(siblings) {
+  const assignments = new Map();
+  let order = 0;
+
+  for (const sibling of siblings) {
+    if (isIndexFile(sibling.name)) {
+      continue;
+    }
+
+    assignments.set(sibling.file.absolutePath, order);
+    order += 1;
+  }
+
+  return assignments;
+}
+
+function getMoveState(file) {
+  if (isIndexFile(file.name)) {
+    return { canMoveUp: false, canMoveDown: false };
+  }
+
+  const siblings = getFolderSiblings(file.relativePath);
+  const currentIndex = siblings.findIndex(
+    (sibling) => sibling.file.absolutePath === file.absolutePath,
+  );
+
+  if (currentIndex === -1) {
+    return { canMoveUp: false, canMoveDown: false };
+  }
+
+  return {
+    canMoveUp: findAdjacentSiblingIndex(siblings, currentIndex, "up") !== -1,
+    canMoveDown: findAdjacentSiblingIndex(siblings, currentIndex, "down") !== -1,
+  };
+}
+
+function setNavOrderInFrontmatter(frontmatter, navOrder) {
+  const line = `navOrder: ${navOrder}`;
+
+  if (!frontmatter?.trim()) {
+    return line;
+  }
+
+  if (/^navOrder:\s*.+$/m.test(frontmatter)) {
+    return frontmatter.replace(/^navOrder:\s*.+$/m, line);
+  }
+
+  return `${frontmatter.replace(/\n?$/, "\n")}${line}`;
+}
+
+async function persistFileNavOrder(file, navOrder) {
+  let frontmatter;
+  let body;
+
+  if (currentEditFile?.absolutePath === file.absolutePath) {
+    frontmatter = currentEditFrontmatter;
+    body = getEditorContent();
+  } else {
+    const response = await fetch(`/api/file?path=${encodeURIComponent(file.absolutePath)}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error ?? "Could not read file");
+    }
+
+    frontmatter = data.frontmatter;
+    body = data.content;
+  }
+
+  const newFrontmatter = setNavOrderInFrontmatter(
+    normalizeFrontmatter(frontmatter),
+    navOrder,
+  );
+  const content = buildFileContent(newFrontmatter, body);
+  const response = await fetch("/api/file", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: file.absolutePath,
+      content,
+    }),
+  });
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error ?? "Could not save file");
+  }
+
+  const fileIndex = scannedFiles.findIndex(
+    (entry) => entry.absolutePath === file.absolutePath,
+  );
+  if (fileIndex !== -1) {
+    scannedFiles[fileIndex] = { ...scannedFiles[fileIndex], navOrder };
+  }
+
+  if (currentEditFile?.absolutePath === file.absolutePath) {
+    currentEditFrontmatter = normalizeFrontmatter(newFrontmatter);
+    frontmatterContent.value = currentEditFrontmatter ?? "";
+    updateEditHeader(currentEditFile, currentEditFrontmatter);
+  }
+}
+
+async function moveFileInFolder(file, direction) {
+  if (isIndexFile(file.name)) {
+    return;
+  }
+
+  const siblings = getFolderSiblings(file.relativePath);
+  const currentIndex = siblings.findIndex(
+    (sibling) => sibling.file.absolutePath === file.absolutePath,
+  );
+  const targetIndex = findAdjacentSiblingIndex(siblings, currentIndex, direction);
+
+  if (currentIndex === -1 || targetIndex === -1) {
+    return;
+  }
+
+  const reordered = [...siblings];
+  const [item] = reordered.splice(currentIndex, 1);
+  reordered.splice(targetIndex, 0, item);
+
+  const newOrders = assignNavOrders(reordered);
+  const updates = [];
+
+  for (const [absolutePath, navOrder] of newOrders) {
+    const sibling = reordered.find((entry) => entry.file.absolutePath === absolutePath);
+    const currentNavOrder = sibling?.file.navOrder ?? null;
+
+    if (currentNavOrder !== navOrder) {
+      updates.push({ file: sibling.file, navOrder });
+    }
+  }
+
+  if (updates.length === 0) {
+    return;
+  }
+
+  setBusy(true);
+  clearError();
+
+  try {
+    for (const update of updates) {
+      await persistFileNavOrder(update.file, update.navOrder);
+    }
+
+    updateFileResults();
+  } catch (error) {
+    showError(error.message ?? "Could not reorder files");
+  } finally {
+    setBusy(false);
+  }
+}
+
 function buildFileTree(files, { directories = [], scanTargets = [] } = {}) {
   const roots = new Map();
 
@@ -996,7 +1244,7 @@ function buildFileTree(files, { directories = [], scanTargets = [] } = {}) {
       source: folder.source,
       children: [
         ...folderMapToNodes(folder.childFolders),
-        ...folder.files.sort((a, b) => a.name.localeCompare(b.name)),
+        ...folder.files.sort(compareFolderFiles),
       ],
     }));
   }
@@ -1099,7 +1347,7 @@ function buildFileTree(files, { directories = [], scanTargets = [] } = {}) {
       source: root.source,
       children: [
         ...folderMapToNodes(root.childFolders),
-        ...root.files.sort((a, b) => a.name.localeCompare(b.name)),
+        ...root.files.sort(compareFolderFiles),
       ],
     }));
 }
@@ -1361,6 +1609,16 @@ async function saveCurrentFile() {
     currentEditFrontmatter = normalizeFrontmatter(frontmatter ?? "");
     frontmatterContent.value = currentEditFrontmatter ?? "";
     updateEditHeader(currentEditFile, currentEditFrontmatter);
+
+    const navOrder = parseNavOrderFromFrontmatter(currentEditFrontmatter);
+    const fileIndex = scannedFiles.findIndex(
+      (entry) => entry.absolutePath === currentEditFile.absolutePath,
+    );
+    if (fileIndex !== -1) {
+      scannedFiles[fileIndex] = { ...scannedFiles[fileIndex], navOrder };
+      updateFileResults();
+    }
+
     renderMarkdownEditor(body);
     resetEditorHistory(body);
     setSaveButtonState({ label: "Saved", disabled: false });
@@ -1551,7 +1809,8 @@ function formatScanInfo(scanTargets) {
   return `Scanning ${labels.join(" and ")}`;
 }
 
-function createFileRow(file, depth) {
+function createFileRow(node, depth, { isSearching = false } = {}) {
+  const file = node.file;
   const item = document.createElement("li");
   item.className = "tree-file";
   item.style.setProperty("--depth", depth);
@@ -1567,6 +1826,38 @@ function createFileRow(file, depth) {
 
   const actions = document.createElement("div");
   actions.className = "file-actions";
+
+  if (!isSearching) {
+    const { canMoveUp, canMoveDown } = getMoveState(file);
+
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.className = "tree-action-btn move-btn";
+    upBtn.innerHTML = ARROW_UP_ICON;
+    upBtn.title = `Move ${file.name} up`;
+    upBtn.setAttribute("aria-label", `Move ${file.name} up`);
+    upBtn.disabled = !canMoveUp;
+    upBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      moveFileInFolder(file, "up");
+    });
+
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.className = "tree-action-btn move-btn";
+    downBtn.innerHTML = ARROW_DOWN_ICON;
+    downBtn.title = `Move ${file.name} down`;
+    downBtn.setAttribute("aria-label", `Move ${file.name} down`);
+    downBtn.disabled = !canMoveDown;
+    downBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      moveFileInFolder(file, "down");
+    });
+
+    actions.append(upBtn, downBtn);
+  }
 
   const editBtn = document.createElement("button");
   editBtn.type = "button";
@@ -1696,7 +1987,7 @@ function createFolderRow(node, depth, { isSearching }) {
       if (child.type === "folder") {
         children.append(createFolderRow(child, depth + 1, { isSearching }));
       } else {
-        children.append(createFileRow(child.file, depth + 1));
+        children.append(createFileRow(child, depth + 1, { isSearching }));
       }
     }
 
