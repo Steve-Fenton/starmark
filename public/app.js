@@ -10,10 +10,13 @@ const fileList = document.getElementById("file-list");
 const listView = document.getElementById("list-view");
 const editView = document.getElementById("edit-view");
 const editBackBtn = document.getElementById("edit-back-btn");
+const editSaveBtn = document.getElementById("edit-save-btn");
 const editFileName = document.getElementById("edit-file-name");
 const editFilePath = document.getElementById("edit-file-path");
 const markdownEditor = document.getElementById("markdown-editor");
 const editToolbar = document.getElementById("edit-toolbar");
+const frontmatterPanel = document.getElementById("frontmatter-panel");
+const frontmatterContent = document.getElementById("frontmatter-content");
 const projectsSection = document.getElementById("projects-section");
 const projectList = document.getElementById("project-list");
 const projectsMenuBtn = document.getElementById("projects-menu-btn");
@@ -23,10 +26,14 @@ const topBar = document.querySelector(".top-bar");
 
 let projectButtons = [];
 let scannedFiles = [];
+let scannedDirectories = [];
+let lastScanTargets = [];
 let currentProjectPath = "";
 let expandedPaths = new Set();
 let currentEditFile = null;
 let currentEditFrontmatter = null;
+let isSavingFile = false;
+let saveButtonResetTimeout = null;
 let pendingEditorCaret = null;
 let editorHistory = [];
 let editorHistoryIndex = -1;
@@ -44,6 +51,14 @@ const SOURCE_ROOTS = {
 
 const EDIT_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
   <path fill="currentColor" d="M11.5 1.5a1.4 1.4 0 0 1 2 2L5.7 11.3l-2.8.7.7-2.8zM10.5 2.5 3 10v1h1l7.5-7.5z"/>
+</svg>`;
+
+const ADD_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+  <path fill="currentColor" d="M8 3a1 1 0 0 1 1 1v3h3a1 1 0 1 1 0 2H9v3a1 1 0 1 1-2 0V9H4a1 1 0 1 1 0-2h3V4a1 1 0 0 1 1-1z"/>
+</svg>`;
+
+const DELETE_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+  <path fill="currentColor" d="M5.5 5.5v6h1v-6h-1zm2 0v6h1v-6h-1zm2.5 0v6h1v-6h-1zM3.5 3h1v-.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3h3.5v1h-1v8.5c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5V4h-1V3h3.5zm2-1.5a.5.5 0 0 0-.5.5V3h7v-.5a.5.5 0 0 0-.5-.5H6z"/>
 </svg>`;
 
 const HEADING_LINE_RE = /^(#{1,6})\s+(.*)$/;
@@ -919,7 +934,39 @@ function countTreeContents(nodes) {
   return { folders, files };
 }
 
-function buildFileTree(files) {
+function resolveTreePath(relativePath, sourceHint) {
+  const normalized = String(relativePath).replace(/\\/g, "/").replace(/^\/+/, "");
+
+  if (normalized === "src/content" || normalized.startsWith("src/content/")) {
+    return {
+      source: sourceHint ?? "content",
+      rootPath: SOURCE_ROOTS.content,
+      segments:
+        normalized === "src/content"
+          ? []
+          : normalized.slice(`${SOURCE_ROOTS.content}/`.length).split("/").filter(Boolean),
+    };
+  }
+
+  if (normalized === "src/pages" || normalized.startsWith("src/pages/")) {
+    return {
+      source: sourceHint ?? "pages",
+      rootPath: SOURCE_ROOTS.pages,
+      segments:
+        normalized === "src/pages"
+          ? []
+          : normalized.slice(`${SOURCE_ROOTS.pages}/`.length).split("/").filter(Boolean),
+    };
+  }
+
+  return {
+    source: sourceHint ?? "project",
+    rootPath: "",
+    segments: normalized.split("/").filter(Boolean),
+  };
+}
+
+function buildFileTree(files, { directories = [], scanTargets = [] } = {}) {
   const roots = new Map();
 
   function ensureFolder(folderMap, folderPath, name, source) {
@@ -954,32 +1001,55 @@ function buildFileTree(files) {
     }));
   }
 
-  for (const file of files) {
-    let rootPath;
-    let segments;
+  function ensureRoot(source, rootPath) {
+    const rootLabel = rootPath || "project";
+    ensureFolder(roots, rootPath || "__project__", rootLabel, source);
+  }
 
-    if (file.source === "content" || file.source === "pages") {
-      rootPath = SOURCE_ROOTS[file.source];
-      const prefix = `${rootPath}/`;
-      const remainder = file.relativePath.startsWith(prefix)
-        ? file.relativePath.slice(prefix.length)
-        : file.relativePath.replace(/^src\/(content|pages)\/?/, "");
-      segments = remainder.split("/").filter(Boolean);
-    } else {
-      segments = file.relativePath.split("/").filter(Boolean);
-      rootPath = "";
+  function addFolderSegments(rootPath, segments, source) {
+    ensureRoot(source, rootPath);
+
+    if (segments.length === 0) {
+      return;
     }
 
-    const rootLabel = rootPath || "project";
-    const root = ensureFolder(roots, rootPath || "__project__", rootLabel, file.source);
-    let current = root;
+    let current = ensureFolder(roots, rootPath || "__project__", rootPath || "project", source);
     let currentPath = rootPath;
+
+    for (const segment of segments) {
+      currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+      current = ensureFolder(current.childFolders, currentPath, segment, source);
+    }
+  }
+
+  function addDirectoryPath(relativePath, sourceHint) {
+    const { rootPath, segments, source } = resolveTreePath(relativePath, sourceHint);
+    addFolderSegments(rootPath, segments, source);
+  }
+
+  for (const target of scanTargets) {
+    if (target.pathPrefix) {
+      addDirectoryPath(target.pathPrefix, target.source);
+    } else {
+      ensureRoot(target.source, "");
+    }
+  }
+
+  for (const directoryPath of directories) {
+    addDirectoryPath(directoryPath);
+  }
+
+  for (const file of files) {
+    const { rootPath, segments, source } = resolveTreePath(file.relativePath, file.source);
 
     if (segments.length === 0) {
       continue;
     }
 
+    ensureRoot(source, rootPath);
+
     if (segments.length === 1) {
+      const root = ensureFolder(roots, rootPath || "__project__", rootPath || "project", source);
       root.files.push({
         type: "file",
         name: segments[0],
@@ -989,13 +1059,16 @@ function buildFileTree(files) {
       continue;
     }
 
+    let current = ensureFolder(roots, rootPath || "__project__", rootPath || "project", source);
+    let currentPath = rootPath;
+
     for (let index = 0; index < segments.length - 1; index += 1) {
       currentPath = currentPath ? `${currentPath}/${segments[index]}` : segments[index];
       current = ensureFolder(
         current.childFolders,
         currentPath,
         segments[index],
-        file.source,
+        source,
       );
     }
 
@@ -1038,17 +1111,26 @@ function updateFileResults() {
 
   fileCount.textContent = formatFileCount(filteredFiles.length, scannedFiles.length);
 
-  if (filteredFiles.length === 0) {
+  if (filteredFiles.length === 0 && isSearching) {
     emptyState.hidden = false;
-    emptyState.textContent = isSearching
-      ? "No files match your search."
-      : "No .md or .mdx files found in this folder.";
+    emptyState.textContent = "No files match your search.";
     fileList.hidden = true;
     fileList.innerHTML = "";
     return;
   }
 
-  const tree = buildFileTree(filteredFiles);
+  const tree = buildFileTree(filteredFiles, {
+    directories: isSearching ? [] : scannedDirectories,
+    scanTargets: lastScanTargets,
+  });
+
+  if (tree.length === 0) {
+    emptyState.hidden = false;
+    emptyState.textContent = "No .md or .mdx files found in this folder.";
+    fileList.hidden = true;
+    fileList.innerHTML = "";
+    return;
+  }
 
   if (!isSearching) {
     ensureDefaultExpandedRoots(tree);
@@ -1058,9 +1140,57 @@ function updateFileResults() {
     }
   }
 
-  emptyState.hidden = true;
+  if (filteredFiles.length === 0 && !isSearching) {
+    emptyState.hidden = false;
+    emptyState.textContent = "No .md or .mdx files found in this folder.";
+  } else {
+    emptyState.hidden = true;
+  }
+
   fileList.hidden = false;
   renderFileTree(tree, { isSearching });
+}
+
+function applyScanData(data) {
+  folderInput.value = data.projectPath;
+  currentProjectPath = data.projectPath;
+  setProjectInUrl(data.projectPath);
+  loadExpandedPaths(currentProjectPath);
+
+  scanInfo.hidden = false;
+  scanInfo.textContent = formatScanInfo(data.scanTargets);
+
+  scannedFiles = data.files;
+  scannedDirectories = data.directories ?? [];
+  lastScanTargets = data.scanTargets ?? [];
+  fileSearch.value = "";
+  searchBox.hidden =
+    scannedFiles.length === 0 &&
+    scannedDirectories.length === 0 &&
+    lastScanTargets.length === 0;
+
+  updateFileResults();
+}
+
+async function refreshScan() {
+  if (!currentProjectPath) {
+    return null;
+  }
+
+  const response = await fetch("/api/scan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: currentProjectPath }),
+  });
+  const data = await response.json();
+
+  if (!response.ok) {
+    showError(data.error ?? "Could not refresh folder");
+    return null;
+  }
+
+  applyScanData(data);
+  return data;
 }
 
 function getProjectFromUrl() {
@@ -1092,8 +1222,177 @@ function showListView() {
   editView.hidden = true;
   currentEditFile = null;
   currentEditFrontmatter = null;
+  frontmatterPanel.hidden = true;
+  frontmatterContent.value = "";
+  clearTimeout(saveButtonResetTimeout);
+  setSaveButtonState({ disabled: true });
   setFileInUrl(null);
 }
+
+function getFrontmatterTitle(frontmatter) {
+  if (!frontmatter) {
+    return null;
+  }
+
+  const match = frontmatter.match(/^title:\s*(.+)$/m);
+  if (!match) {
+    return null;
+  }
+
+  let value = match[1].trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
+}
+
+function updateEditHeader(file, frontmatter = null) {
+  editFileName.textContent = getFrontmatterTitle(frontmatter) ?? file.name;
+  editFilePath.textContent = file.relativePath;
+  editFilePath.title = file.absolutePath;
+}
+
+function normalizeFrontmatter(value) {
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+function splitFrontmatter(content) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) {
+    return { frontmatter: null, body: content };
+  }
+
+  return {
+    frontmatter: match[1],
+    body: content.slice(match[0].length),
+  };
+}
+
+function collapseBlankLines(text) {
+  const lines = text.split(/\r?\n/);
+  const result = [];
+  let previousBlank = false;
+
+  for (const line of lines) {
+    const isBlank = line.trim() === "";
+    if (isBlank) {
+      if (!previousBlank) {
+        result.push("");
+      }
+      previousBlank = true;
+    } else {
+      result.push(line);
+      previousBlank = false;
+    }
+  }
+
+  return result.join("\n");
+}
+
+function buildFileContent(frontmatter, body) {
+  const trimmedFrontmatter = frontmatter?.trim() ?? "";
+  let content =
+    trimmedFrontmatter === ""
+      ? body
+      : `---\n${trimmedFrontmatter}\n---\n${body}`;
+
+  content = collapseBlankLines(content);
+  if (!content.endsWith("\n")) {
+    content += "\n";
+  }
+
+  return content;
+}
+
+function setSaveButtonState({ label = "Save", disabled = false, error = false } = {}) {
+  editSaveBtn.textContent = label;
+  editSaveBtn.disabled = disabled;
+  editSaveBtn.classList.toggle("is-error", error);
+}
+
+function resetSaveButtonSoon(delay = 1800) {
+  clearTimeout(saveButtonResetTimeout);
+  saveButtonResetTimeout = setTimeout(() => {
+    if (!isSavingFile) {
+      setSaveButtonState({ disabled: !currentEditFile });
+    }
+  }, delay);
+}
+
+async function saveCurrentFile() {
+  if (!currentEditFile || isSavingFile || markdownEditor.dataset.loading) {
+    return;
+  }
+
+  flushEditorHistory();
+  currentEditFrontmatter = normalizeFrontmatter(frontmatterContent.value);
+  const content = buildFileContent(currentEditFrontmatter, getEditorContent());
+
+  isSavingFile = true;
+  setSaveButtonState({ label: "Saving…", disabled: true });
+
+  try {
+    const response = await fetch("/api/file", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: currentEditFile.absolutePath,
+        content,
+      }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      setSaveButtonState({
+        label: data.error ?? "Save failed",
+        disabled: false,
+        error: true,
+      });
+      resetSaveButtonSoon(2500);
+      return;
+    }
+
+    const { frontmatter, body } = splitFrontmatter(content);
+    currentEditFrontmatter = normalizeFrontmatter(frontmatter ?? "");
+    frontmatterContent.value = currentEditFrontmatter ?? "";
+    updateEditHeader(currentEditFile, currentEditFrontmatter);
+    renderMarkdownEditor(body);
+    resetEditorHistory(body);
+    setSaveButtonState({ label: "Saved", disabled: false });
+    resetSaveButtonSoon();
+  } catch {
+    setSaveButtonState({ label: "Save failed", disabled: false, error: true });
+    resetSaveButtonSoon(2500);
+  } finally {
+    isSavingFile = false;
+  }
+}
+
+function updateFrontmatterPanel(frontmatter) {
+  frontmatterContent.value = frontmatter ?? "";
+  frontmatterPanel.hidden = false;
+  frontmatterPanel.open = localStorage.getItem("starmark:frontmatter-panel-open") === "true";
+}
+
+function handleFrontmatterInput() {
+  if (!currentEditFile) {
+    return;
+  }
+
+  currentEditFrontmatter = normalizeFrontmatter(frontmatterContent.value);
+  updateEditHeader(currentEditFile, currentEditFrontmatter);
+}
+
+frontmatterPanel.addEventListener("toggle", () => {
+  localStorage.setItem("starmark:frontmatter-panel-open", frontmatterPanel.open ? "true" : "false");
+});
+
+frontmatterContent.addEventListener("input", handleFrontmatterInput);
 
 function showEditView() {
   listView.hidden = true;
@@ -1105,11 +1404,11 @@ async function openEditView(file) {
   setFileInUrl(file.absolutePath);
   showEditView();
 
-  editFileName.textContent = file.name;
-  editFilePath.textContent = file.relativePath;
-  editFilePath.title = file.absolutePath;
+  updateEditHeader(file, null);
   renderMarkdownEditor("");
   resetEditorHistory("");
+  updateFrontmatterPanel(null);
+  setSaveButtonState({ disabled: true });
   markdownEditor.dataset.loading = "true";
 
   try {
@@ -1118,6 +1417,8 @@ async function openEditView(file) {
 
     if (!response.ok) {
       setMarkdownEditorMessage(data.error ?? "Could not load file");
+      updateFrontmatterPanel(null);
+      setSaveButtonState({ disabled: true });
       return;
     }
 
@@ -1126,11 +1427,16 @@ async function openEditView(file) {
     }
 
     currentEditFrontmatter = data.frontmatter ?? null;
+    updateEditHeader(file, currentEditFrontmatter);
+    updateFrontmatterPanel(currentEditFrontmatter);
     renderMarkdownEditor(data.content);
     resetEditorHistory(data.content);
+    setSaveButtonState({ disabled: false });
   } catch {
     if (currentEditFile?.absolutePath === file.absolutePath) {
       setMarkdownEditorMessage("Could not load file");
+      updateFrontmatterPanel(null);
+      setSaveButtonState({ disabled: true });
     }
   } finally {
     delete markdownEditor.dataset.loading;
@@ -1270,7 +1576,23 @@ function createFileRow(file, depth) {
   editBtn.setAttribute("aria-label", `Edit ${file.name}`);
   editBtn.addEventListener("click", () => openEditView(file));
 
-  actions.append(editBtn);
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "tree-action-btn delete-btn";
+  deleteBtn.innerHTML = DELETE_ICON;
+  deleteBtn.title = `Delete ${file.name}`;
+  deleteBtn.setAttribute("aria-label", `Delete ${file.name}`);
+  deleteBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openConfirmDeleteDialog({
+      type: "file",
+      name: file.name,
+      relativePath: file.relativePath,
+    });
+  });
+
+  actions.append(editBtn, deleteBtn);
   item.append(extBadge, name, actions);
   return item;
 }
@@ -1325,6 +1647,45 @@ function createFolderRow(node, depth, { isSearching }) {
     summary.append(count);
   }
 
+  const actions = document.createElement("div");
+  actions.className = "file-actions";
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "tree-action-btn add-btn";
+  addBtn.innerHTML = ADD_ICON;
+  addBtn.title = `Add to ${label.textContent}`;
+  addBtn.setAttribute("aria-label", `Add file or folder to ${label.textContent}`);
+  addBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openNewItemDialog(node.path);
+  });
+
+  actions.append(addBtn);
+
+  if (depth > 0) {
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "tree-action-btn delete-btn";
+    deleteBtn.innerHTML = DELETE_ICON;
+    deleteBtn.title = `Delete ${node.name}`;
+    deleteBtn.setAttribute("aria-label", `Delete folder ${node.name}`);
+    deleteBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openConfirmDeleteDialog({
+        type: "folder",
+        name: node.name,
+        relativePath: node.path,
+      });
+    });
+
+    actions.append(deleteBtn);
+  }
+
+  summary.append(actions);
+
   details.append(summary);
 
   if (node.children.length > 0) {
@@ -1378,30 +1739,7 @@ async function scanFolder(pathValue = folderInput.value.trim()) {
       return;
     }
 
-    folderInput.value = data.projectPath;
-    currentProjectPath = data.projectPath;
-    setProjectInUrl(data.projectPath);
-    loadExpandedPaths(currentProjectPath);
-
-    scanInfo.hidden = false;
-    scanInfo.textContent = formatScanInfo(data.scanTargets);
-
-    scannedFiles = data.files;
-    fileSearch.value = "";
-    searchBox.hidden = scannedFiles.length === 0;
-
-    if (scannedFiles.length === 0) {
-      fileCount.textContent = formatFileCount(0);
-      emptyState.hidden = false;
-      emptyState.textContent = "No .md or .mdx files found in this folder.";
-      fileList.hidden = true;
-      fileList.innerHTML = "";
-      await loadProjects();
-      projectsDialog.close();
-      return;
-    }
-
-    updateFileResults();
+    applyScanData(data);
     await loadProjects();
     projectsDialog.close();
   } catch {
@@ -1410,6 +1748,355 @@ async function scanFolder(pathValue = folderInput.value.trim()) {
     setBusy(false);
   }
 }
+
+async function createEntry(parentPath, name) {
+  if (!currentProjectPath) {
+    return { ok: false, error: "Choose a project folder first" };
+  }
+
+  const trimmedName = name.trim();
+  const existing = entryExistsAtPath(parentPath, trimmedName);
+  if (existing.exists) {
+    return {
+      ok: false,
+      error:
+        existing.type === "file"
+          ? "A file with that name already exists"
+          : "A folder with that name already exists",
+    };
+  }
+
+  setBusy(true);
+  clearError();
+
+  try {
+    const response = await fetch("/api/entry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectPath: currentProjectPath,
+        parentPath,
+        name: trimmedName,
+      }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { ok: false, error: data.error ?? "Could not create entry" };
+    }
+
+    expandedPaths.add(parentPath);
+    saveExpandedPaths();
+
+    await refreshScan();
+
+    if (data.type === "file") {
+      const file = scannedFiles.find((entry) => entry.absolutePath === data.absolutePath) ?? {
+        name: data.name,
+        relativePath: data.relativePath,
+        absolutePath: data.absolutePath ?? data.path,
+        extension: data.extension,
+        source: data.source,
+      };
+      await openEditView(file);
+    }
+
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: "Could not create entry" };
+  } finally {
+    setBusy(false);
+  }
+}
+
+function getTargetRelativePath(parentPath, name) {
+  const normalizedParent = String(parentPath).replace(/\\/g, "/").replace(/^\/+/, "");
+  return normalizedParent ? `${normalizedParent}/${name}` : name;
+}
+
+function entryExistsAtPath(parentPath, name) {
+  const targetPath = getTargetRelativePath(parentPath, name);
+
+  if (scannedFiles.some((file) => file.relativePath.replace(/\\/g, "/") === targetPath)) {
+    return { exists: true, type: "file" };
+  }
+
+  if (scannedDirectories.includes(targetPath)) {
+    return { exists: true, type: "folder" };
+  }
+
+  return { exists: false };
+}
+
+function normalizeRelativePath(relativePath) {
+  return String(relativePath).replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function isPathInsideDeletedEntry(filePath, deletedPath) {
+  const normalizedFilePath = normalizeRelativePath(filePath);
+  const normalizedDeletedPath = normalizeRelativePath(deletedPath);
+  return (
+    normalizedFilePath === normalizedDeletedPath ||
+    normalizedFilePath.startsWith(`${normalizedDeletedPath}/`)
+  );
+}
+
+function removeExpandedPathsUnder(deletedPath) {
+  const normalizedDeletedPath = normalizeRelativePath(deletedPath);
+
+  for (const expandedPath of [...expandedPaths]) {
+    const normalizedExpandedPath = normalizeRelativePath(expandedPath);
+    if (
+      normalizedExpandedPath === normalizedDeletedPath ||
+      normalizedExpandedPath.startsWith(`${normalizedDeletedPath}/`)
+    ) {
+      expandedPaths.delete(expandedPath);
+    }
+  }
+
+  saveExpandedPaths();
+}
+
+async function deleteEntry(relativePath) {
+  if (!currentProjectPath) {
+    return { ok: false, error: "Choose a project folder first" };
+  }
+
+  setBusy(true);
+  clearError();
+
+  try {
+    const response = await fetch("/api/entry", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectPath: currentProjectPath,
+        relativePath,
+      }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { ok: false, error: data.error ?? "Could not delete entry" };
+    }
+
+    if (
+      currentEditFile &&
+      isPathInsideDeletedEntry(currentEditFile.relativePath, relativePath)
+    ) {
+      showListView();
+    }
+
+    removeExpandedPathsUnder(relativePath);
+    await refreshScan();
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: "Could not delete entry" };
+  } finally {
+    setBusy(false);
+  }
+}
+
+function createConfirmDeleteDialog() {
+  const dialog = document.createElement("dialog");
+  dialog.id = "confirm-delete-dialog";
+  dialog.className = "confirm-dialog";
+  dialog.innerHTML = `
+    <div class="dialog-header">
+      <h2 class="confirm-delete-title">Delete file?</h2>
+      <button type="button" class="dialog-close confirm-delete-dialog-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="confirm-dialog-body">
+      <p class="confirm-delete-message"></p>
+      <p class="confirm-delete-error" hidden></p>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="confirm-cancel">Cancel</button>
+        <button type="button" class="destructive confirm-delete-submit">Delete</button>
+      </div>
+    </div>
+  `;
+
+  const titleEl = dialog.querySelector(".confirm-delete-title");
+  const messageEl = dialog.querySelector(".confirm-delete-message");
+  const errorEl = dialog.querySelector(".confirm-delete-error");
+  const closeBtn = dialog.querySelector(".confirm-delete-dialog-close");
+  const cancelBtn = dialog.querySelector(".confirm-cancel");
+  const deleteBtn = dialog.querySelector(".confirm-delete-submit");
+  let pendingEntry = null;
+
+  function clearDialogError() {
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+  }
+
+  function showDialogError(message) {
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  }
+
+  function setDialogBusy(isBusy) {
+    deleteBtn.disabled = isBusy;
+    cancelBtn.disabled = isBusy;
+    closeBtn.disabled = isBusy;
+    deleteBtn.textContent = isBusy ? "Deleting…" : "Delete";
+  }
+
+  closeBtn.addEventListener("click", () => {
+    dialog.close();
+  });
+
+  cancelBtn.addEventListener("click", () => {
+    dialog.close();
+  });
+
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("close", () => {
+    pendingEntry = null;
+    clearDialogError();
+    setDialogBusy(false);
+  });
+
+  deleteBtn.addEventListener("click", async () => {
+    if (!pendingEntry) {
+      return;
+    }
+
+    clearDialogError();
+    setDialogBusy(true);
+
+    const result = await deleteEntry(pendingEntry.relativePath);
+    if (!result.ok) {
+      setDialogBusy(false);
+      showDialogError(result.error);
+      return;
+    }
+
+    dialog.close();
+  });
+
+  function openConfirmDeleteDialog(entry) {
+    pendingEntry = entry;
+    clearDialogError();
+
+    if (entry.type === "folder") {
+      titleEl.textContent = "Delete folder?";
+      messageEl.textContent = `Delete "${entry.name}" and everything inside it? This cannot be undone.`;
+    } else {
+      titleEl.textContent = "Delete file?";
+      messageEl.textContent = `Delete "${entry.name}"? This cannot be undone.`;
+    }
+
+    dialog.showModal();
+    cancelBtn.focus();
+  }
+
+  document.body.append(dialog);
+
+  return { openConfirmDeleteDialog };
+}
+
+const { openConfirmDeleteDialog } = createConfirmDeleteDialog();
+
+function createNewItemDialog() {
+  const dialog = document.createElement("dialog");
+  dialog.id = "new-item-dialog";
+  dialog.className = "new-item-dialog";
+  dialog.innerHTML = `
+    <div class="dialog-header">
+      <h2>New file or folder</h2>
+      <button type="button" class="dialog-close new-item-dialog-close" aria-label="Close">&times;</button>
+    </div>
+    <form class="new-item-form">
+      <div class="new-item-field">
+        <label for="new-item-name">Name</label>
+        <input
+          id="new-item-name"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="post.md or my-folder"
+        />
+        <p class="new-item-hint">.md / .mdx creates a file; anything else creates a folder.</p>
+        <p class="new-item-error" hidden></p>
+      </div>
+      <div class="new-item-form-actions">
+        <button type="submit" class="primary">Create</button>
+      </div>
+    </form>
+  `;
+
+  const closeBtn = dialog.querySelector(".new-item-dialog-close");
+  const form = dialog.querySelector(".new-item-form");
+  const nameInput = dialog.querySelector("#new-item-name");
+  const errorEl = dialog.querySelector(".new-item-error");
+  let pendingParentPath = "";
+
+  function clearDialogError() {
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+  }
+
+  function showDialogError(message) {
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  }
+
+  closeBtn.addEventListener("click", () => {
+    dialog.close();
+  });
+
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("close", () => {
+    pendingParentPath = "";
+    form.reset();
+    clearDialogError();
+  });
+
+  nameInput.addEventListener("input", clearDialogError);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) {
+      return;
+    }
+
+    clearDialogError();
+
+    const result = await createEntry(pendingParentPath, name);
+    if (!result.ok) {
+      showDialogError(result.error);
+      nameInput.focus();
+      nameInput.select();
+      return;
+    }
+
+    dialog.close();
+  });
+
+  function openNewItemDialog(parentPath) {
+    pendingParentPath = parentPath;
+    clearDialogError();
+    dialog.showModal();
+    nameInput.focus();
+  }
+
+  document.body.append(dialog);
+
+  return { openNewItemDialog };
+}
+
+const { openNewItemDialog } = createNewItemDialog();
 
 browseBtn.addEventListener("click", browseFolder);
 scanBtn.addEventListener("click", () => scanFolder());
@@ -1476,6 +2163,7 @@ function createImageLightbox() {
 }
 
 editBackBtn.addEventListener("click", showListView);
+editSaveBtn.addEventListener("click", saveCurrentFile);
 markdownEditor.addEventListener("click", (event) => {
   const preview = event.target.closest(".editor-image-preview");
   if (!preview) {
@@ -1512,7 +2200,10 @@ markdownEditor.addEventListener("keydown", (event) => {
   }
 
   const key = event.key.toLowerCase();
-  if (key === "z" && !event.shiftKey) {
+  if (key === "s") {
+    event.preventDefault();
+    saveCurrentFile();
+  } else if (key === "z" && !event.shiftKey) {
     event.preventDefault();
     undoEditorChange();
   } else if (key === "z" && event.shiftKey) {
@@ -1521,6 +2212,14 @@ markdownEditor.addEventListener("keydown", (event) => {
   } else if (key === "y") {
     event.preventDefault();
     redoEditorChange();
+  }
+});
+
+frontmatterContent.addEventListener("keydown", (event) => {
+  const isMod = event.metaKey || event.ctrlKey;
+  if (isMod && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    saveCurrentFile();
   }
 });
 

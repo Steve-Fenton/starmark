@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Starmark</title>
+    <title>starmark</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header class="top-bar">
       <div class="top-bar-inner">
-        <h1 class="top-bar-title">Starmark</h1>
+        <h1 class="top-bar-title">starmark</h1>
         <button id="projects-menu-btn" type="button" class="top-bar-btn">
           Projects
         </button>
@@ -80,9 +80,24 @@
               <h2 id="edit-file-name" class="edit-file-name"></h2>
               <p id="edit-file-path" class="edit-file-path"></p>
             </div>
+            <button id="edit-save-btn" type="button" class="edit-save-btn primary" disabled>
+              Save
+            </button>
           </div>
           <div id="edit-toolbar" class="edit-toolbar" role="toolbar" aria-label="Editor toolbar"></div>
         </div>
+        <details id="frontmatter-panel" class="frontmatter-panel" hidden>
+          <summary class="frontmatter-panel-header">Frontmatter</summary>
+          <textarea
+            id="frontmatter-content"
+            class="frontmatter-content"
+            rows="8"
+            spellcheck="false"
+            autocomplete="off"
+            aria-label="Frontmatter"
+            placeholder="title: My Page&#10;description: ..."
+          ></textarea>
+        </details>
         <div
           id="markdown-editor"
           class="markdown-editor"

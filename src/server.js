@@ -4,6 +4,7 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
+import { buildInitialFileContent } from "./content-config.js";
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -123,6 +124,110 @@ async function findMarkdownFiles(dir, { source, pathPrefix, baseDir = dir } = {}
   }
 
   return files;
+}
+
+async function findDirectories(dir, { pathPrefix, baseDir = dir } = {}) {
+  const directories = [];
+
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return directories;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || SKIP_DIRS.has(entry.name)) continue;
+
+    const fullPath = path.join(dir, entry.name);
+    const relativeWithinRoot = path.relative(baseDir, fullPath);
+    const relativePath = pathPrefix
+      ? path.join(pathPrefix, relativeWithinRoot)
+      : relativeWithinRoot;
+
+    directories.push(relativePath.replace(/\\/g, "/"));
+    directories.push(
+      ...(await findDirectories(fullPath, { pathPrefix, baseDir })),
+    );
+  }
+
+  return directories;
+}
+
+function resolveProjectSubpath(projectPath, relativePath = "") {
+  const resolvedProject = path.resolve(projectPath);
+  const normalized = String(relativePath).replace(/^\/+/, "").replace(/\\/g, "/");
+  const target = path.resolve(resolvedProject, normalized || ".");
+
+  if (target !== resolvedProject && !target.startsWith(`${resolvedProject}${path.sep}`)) {
+    return null;
+  }
+
+  return {
+    projectPath: resolvedProject,
+    target,
+    relativePath: normalized,
+  };
+}
+
+function normalizeRelativePath(relativePath) {
+  return String(relativePath).replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function inferSourceFromRelativePath(relativePath, scanTargets) {
+  const normalized = normalizeRelativePath(relativePath);
+
+  for (const target of scanTargets) {
+    const prefix = normalizeRelativePath(target.pathPrefix);
+    if (!prefix) {
+      if (target.source === "project") {
+        return "project";
+      }
+      continue;
+    }
+
+    if (normalized === prefix || normalized.startsWith(`${prefix}/`)) {
+      return target.source;
+    }
+  }
+
+  return null;
+}
+
+function isPathUnderScanTargets(relativePath, scanTargets) {
+  return inferSourceFromRelativePath(relativePath, scanTargets) !== null;
+}
+
+function isProtectedScanRoot(relativePath, scanTargets) {
+  const normalized = normalizeRelativePath(relativePath);
+
+  for (const target of scanTargets) {
+    const prefix = normalizeRelativePath(target.pathPrefix);
+    if (prefix && normalized === prefix) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isMarkdownFileName(name) {
+  const ext = path.extname(name).toLowerCase();
+  return ext === ".md" || ext === ".mdx";
+}
+
+function validateEntryName(name) {
+  const trimmed = String(name).trim();
+
+  if (!trimmed) {
+    return { error: "A name is required" };
+  }
+
+  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
+    return { error: "Name cannot contain path separators" };
+  }
+
+  return { name: trimmed };
 }
 
 async function resolveScanTargets(projectPath) {
@@ -284,9 +389,19 @@ app.post("/api/scan", async (req, res) => {
         source: target.source,
         pathPrefix: target.pathPrefix,
       }),
+      directories: await findDirectories(target.scanRoot, {
+        pathPrefix: target.pathPrefix,
+      }),
     })),
   );
   const files = sortFiles(fileGroups.flatMap((group) => group.files));
+  const directories = [
+    ...new Set(
+      fileGroups
+        .flatMap((group) => group.directories)
+        .map((dirPath) => dirPath.replace(/\\/g, "/")),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
 
   if (files.length > 0) {
     await saveProject(resolved);
@@ -301,7 +416,167 @@ app.post("/api/scan", async (req, res) => {
       fileCount: groupFiles.length,
     })),
     files,
+    directories,
   });
+});
+
+app.post("/api/entry", async (req, res) => {
+  const { projectPath, parentPath = "", name } = req.body ?? {};
+
+  if (!projectPath || typeof projectPath !== "string") {
+    return res.status(400).json({ error: "A project path is required" });
+  }
+
+  const nameResult = validateEntryName(name);
+  if (nameResult.error) {
+    return res.status(400).json({ error: nameResult.error });
+  }
+
+  const resolvedProject = path.resolve(projectPath);
+
+  try {
+    const stat = await fs.stat(resolvedProject);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: "Project path is not a directory" });
+    }
+  } catch {
+    return res.status(404).json({ error: "Project does not exist or is not accessible" });
+  }
+
+  const normalizedParentPath = normalizeRelativePath(parentPath);
+  const parentResolved = resolveProjectSubpath(resolvedProject, normalizedParentPath);
+  if (!parentResolved) {
+    return res.status(400).json({ error: "Invalid parent path" });
+  }
+
+  try {
+    const parentStat = await fs.stat(parentResolved.target);
+    if (!parentStat.isDirectory()) {
+      return res.status(400).json({ error: "Parent path is not a directory" });
+    }
+  } catch {
+    return res.status(404).json({ error: "Parent folder does not exist or is not accessible" });
+  }
+
+  const scanTargets = await resolveScanTargets(resolvedProject);
+  if (!isPathUnderScanTargets(normalizedParentPath, scanTargets)) {
+    return res.status(400).json({ error: "Parent path is outside the project content area" });
+  }
+
+  const targetRelativePath = normalizedParentPath
+    ? `${normalizedParentPath}/${nameResult.name}`
+    : nameResult.name;
+  const targetResolved = resolveProjectSubpath(resolvedProject, targetRelativePath);
+  if (!targetResolved) {
+    return res.status(400).json({ error: "Invalid target path" });
+  }
+
+  try {
+    const stat = await fs.stat(targetResolved.target);
+    if (stat.isDirectory()) {
+      return res.status(409).json({ error: "A folder with that name already exists" });
+    }
+    return res.status(409).json({ error: "A file with that name already exists" });
+  } catch {
+    // Target does not exist yet.
+  }
+
+  const source = inferSourceFromRelativePath(targetRelativePath, scanTargets) ?? "project";
+
+  try {
+    if (isMarkdownFileName(nameResult.name)) {
+      const initialContent = await buildInitialFileContent(
+        resolvedProject,
+        targetRelativePath.replace(/\\/g, "/"),
+        source,
+      );
+      await fs.writeFile(targetResolved.target, initialContent, "utf8");
+      const ext = path.extname(nameResult.name).toLowerCase().slice(1);
+
+      return res.json({
+        type: "file",
+        path: targetResolved.target,
+        relativePath: targetRelativePath.replace(/\\/g, "/"),
+        name: nameResult.name,
+        absolutePath: targetResolved.target,
+        extension: ext,
+        source,
+      });
+    }
+
+    await fs.mkdir(targetResolved.target, { recursive: false });
+
+    return res.json({
+      type: "folder",
+      path: targetResolved.target,
+      relativePath: targetRelativePath.replace(/\\/g, "/"),
+      name: nameResult.name,
+      source,
+    });
+  } catch {
+    return res.status(500).json({ error: "Could not create entry" });
+  }
+});
+
+app.delete("/api/entry", async (req, res) => {
+  const { projectPath, relativePath } = req.body ?? {};
+
+  if (!projectPath || typeof projectPath !== "string") {
+    return res.status(400).json({ error: "A project path is required" });
+  }
+
+  if (!relativePath || typeof relativePath !== "string") {
+    return res.status(400).json({ error: "A relative path is required" });
+  }
+
+  const resolvedProject = path.resolve(projectPath);
+
+  try {
+    const stat = await fs.stat(resolvedProject);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: "Project path is not a directory" });
+    }
+  } catch {
+    return res.status(404).json({ error: "Project does not exist or is not accessible" });
+  }
+
+  const normalizedRelativePath = normalizeRelativePath(relativePath);
+  const targetResolved = resolveProjectSubpath(resolvedProject, normalizedRelativePath);
+  if (!targetResolved) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
+  const scanTargets = await resolveScanTargets(resolvedProject);
+  if (!isPathUnderScanTargets(normalizedRelativePath, scanTargets)) {
+    return res.status(400).json({ error: "Path is outside the project content area" });
+  }
+
+  if (isProtectedScanRoot(normalizedRelativePath, scanTargets)) {
+    return res.status(400).json({ error: "This folder cannot be deleted" });
+  }
+
+  let entryType;
+  try {
+    const stat = await fs.stat(targetResolved.target);
+    entryType = stat.isDirectory() ? "folder" : "file";
+  } catch {
+    return res.status(404).json({ error: "Entry does not exist or is not accessible" });
+  }
+
+  try {
+    if (entryType === "folder") {
+      await fs.rm(targetResolved.target, { recursive: true, force: true });
+    } else {
+      await fs.unlink(targetResolved.target);
+    }
+
+    return res.json({
+      type: entryType,
+      relativePath: normalizedRelativePath,
+    });
+  } catch {
+    return res.status(500).json({ error: "Could not delete entry" });
+  }
 });
 
 app.get("/api/file", async (req, res) => {
@@ -338,6 +613,41 @@ app.get("/api/file", async (req, res) => {
     });
   } catch {
     res.status(500).json({ error: "Could not read file" });
+  }
+});
+
+app.post("/api/file", async (req, res) => {
+  const { path: filePath, content } = req.body ?? {};
+
+  if (!filePath || typeof filePath !== "string") {
+    return res.status(400).json({ error: "A file path is required" });
+  }
+
+  if (typeof content !== "string") {
+    return res.status(400).json({ error: "File content is required" });
+  }
+
+  const resolved = path.resolve(filePath);
+
+  try {
+    const stat = await fs.stat(resolved);
+    if (!stat.isFile()) {
+      return res.status(400).json({ error: "Path is not a file" });
+    }
+  } catch {
+    return res.status(404).json({ error: "File does not exist or is not accessible" });
+  }
+
+  const ext = path.extname(resolved).toLowerCase();
+  if (ext !== ".md" && ext !== ".mdx") {
+    return res.status(400).json({ error: "Only .md and .mdx files are supported" });
+  }
+
+  try {
+    await fs.writeFile(resolved, content, "utf8");
+    res.json({ path: resolved, saved: true });
+  } catch {
+    res.status(500).json({ error: "Could not save file" });
   }
 });
 

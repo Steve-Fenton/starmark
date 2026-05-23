@@ -308,7 +308,7 @@ button:disabled {
 
 .tree-folder-header {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   gap: 0.65rem;
   align-items: center;
   padding: 0.75rem 1rem;
@@ -462,8 +462,10 @@ details[open] > .tree-folder-header::before {
 .file-actions {
   display: flex;
   align-items: center;
+  gap: 0.25rem;
 }
 
+.tree-action-btn,
 .edit-btn {
   display: flex;
   align-items: center;
@@ -477,10 +479,22 @@ details[open] > .tree-folder-header::before {
   color: var(--muted);
 }
 
+.tree-action-btn:hover:not(:disabled),
 .edit-btn:hover:not(:disabled) {
   border-color: var(--border);
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   color: var(--accent);
+}
+
+.tree-folder-header .tree-action-btn {
+  cursor: pointer;
+}
+
+.tree-action-btn.delete-btn:hover:not(:disabled),
+.edit-btn.delete-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #ff8b8b 45%, var(--border));
+  background: color-mix(in srgb, #ff8b8b 12%, var(--surface));
+  color: #ff8b8b;
 }
 
 .edit-view {
@@ -558,6 +572,20 @@ details[open] > .tree-folder-header::before {
 
 .edit-file-info {
   min-width: 0;
+  flex: 1;
+}
+
+.edit-save-btn {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.9rem;
+}
+
+.edit-save-btn.is-error {
+  background: color-mix(in srgb, #c0392b 18%, var(--surface));
+  border-color: #c0392b;
+  color: #c0392b;
 }
 
 .edit-file-name {
@@ -573,6 +601,88 @@ details[open] > .tree-folder-header::before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.frontmatter-panel {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.frontmatter-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  user-select: none;
+}
+
+.frontmatter-panel-header:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--text);
+}
+
+.frontmatter-panel-header::-webkit-details-marker {
+  display: none;
+}
+
+.frontmatter-panel-header::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.frontmatter-panel[open] > .frontmatter-panel-header::before {
+  transform: rotate(45deg);
+}
+
+.frontmatter-content {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 20rem;
+  margin: 0;
+  padding: 0.85rem 1rem 1rem;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  font-family:
+    "SF Mono",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text);
+  resize: vertical;
+  outline: none;
+}
+
+.frontmatter-content::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.frontmatter-content:focus {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
 }
 
 .markdown-editor {
@@ -851,6 +961,107 @@ details[open] > .tree-folder-header::before {
   display: flex;
   justify-content: flex-end;
   margin-top: 0.15rem;
+}
+
+.new-item-dialog {
+  width: min(420px, calc(100vw - 2rem));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.new-item-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.new-item-form {
+  margin: 0.75rem 1.25rem 1.25rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.new-item-field label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.new-item-hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.new-item-error {
+  margin: 0.45rem 0 0;
+  font-size: 0.85rem;
+  color: #ff8b8b;
+}
+
+.new-item-error[hidden] {
+  display: none;
+}
+
+.new-item-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.15rem;
+}
+
+.confirm-dialog {
+  width: min(420px, calc(100vw - 2rem));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.confirm-dialog-body {
+  margin: 0.75rem 1.25rem 1.25rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.confirm-delete-message {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.confirm-delete-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #ff8b8b;
+}
+
+.confirm-delete-error[hidden] {
+  display: none;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+button.destructive {
+  background: #c93c3c;
+  border-color: #c93c3c;
+  color: #fff;
+  font-weight: 600;
+}
+
+button.destructive:hover:not(:disabled) {
+  background: #e05252;
+  border-color: #e05252;
 }
 
 .media-dialog {
