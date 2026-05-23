@@ -32,10 +32,15 @@
   ],
   "scripts": {
     "start": "node bin/starmark.js",
-    "dev": "node --watch bin/starmark.js"
+    "dev": "node --watch bin/starmark.js",
+    "test": "cucumber-js"
   },
   "dependencies": {
     "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^11.3.0",
+    "supertest": "^7.1.0"
   },
   "engines": {
     "node": ">=18"

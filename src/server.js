@@ -1033,6 +1033,8 @@ app.get("/api/media/file", async (req, res) => {
   res.sendFile(resolved.target);
 });
 
+export { app };
+
 export function startServer(options = {}) {
   const port = options.port ?? PORT;
 
