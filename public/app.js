@@ -1,3 +1,5 @@
+import { icons } from "./icons.js";
+
 const folderInput = document.getElementById("folder-path");
 const browseBtn = document.getElementById("browse-btn");
 const scanBtn = document.getElementById("scan-btn");
@@ -48,26 +50,6 @@ const SOURCE_ROOTS = {
   content: "src/content",
   pages: "src/pages",
 };
-
-const EDIT_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-  <path fill="currentColor" d="M11.5 1.5a1.4 1.4 0 0 1 2 2L5.7 11.3l-2.8.7.7-2.8zM10.5 2.5 3 10v1h1l7.5-7.5z"/>
-</svg>`;
-
-const ADD_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-  <path fill="currentColor" d="M8 3a1 1 0 0 1 1 1v3h3a1 1 0 1 1 0 2H9v3a1 1 0 1 1-2 0V9H4a1 1 0 1 1 0-2h3V4a1 1 0 0 1 1-1z"/>
-</svg>`;
-
-const DELETE_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-  <path fill="currentColor" d="M5.5 5.5v6h1v-6h-1zm2 0v6h1v-6h-1zm2.5 0v6h1v-6h-1zM3.5 3h1v-.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3h3.5v1h-1v8.5c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5V4h-1V3h3.5zm2-1.5a.5.5 0 0 0-.5.5V3h7v-.5a.5.5 0 0 0-.5-.5H6z"/>
-</svg>`;
-
-const ARROW_UP_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-  <path fill="currentColor" d="M8 4.5 3.5 9h9L8 4.5z"/>
-</svg>`;
-
-const ARROW_DOWN_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-  <path fill="currentColor" d="M8 11.5 12.5 7h-9L8 11.5z"/>
-</svg>`;
 
 const HEADING_LINE_RE = /^(#{1,6})\s+(.*)$/;
 const CODE_FENCE_RE = /^```/;
@@ -1879,6 +1861,19 @@ function formatScanInfo(scanTargets) {
   return `Scanning ${labels.join(" and ")}`;
 }
 
+function createSourceBadge(source) {
+  const sourceIcons = {
+    content: icons.fileText,
+    pages: icons.layout,
+    project: icons.folder,
+  };
+
+  const badge = document.createElement("span");
+  badge.className = `badge source ${source}`;
+  badge.innerHTML = `${sourceIcons[source] ?? ""}<span>${source}</span>`;
+  return badge;
+}
+
 function appendMoveButtons(actions, file, { isSearching = false } = {}) {
   if (isSearching || file.source === "content") {
     return;
@@ -1889,7 +1884,7 @@ function appendMoveButtons(actions, file, { isSearching = false } = {}) {
   const upBtn = document.createElement("button");
   upBtn.type = "button";
   upBtn.className = "tree-action-btn move-btn";
-  upBtn.innerHTML = ARROW_UP_ICON;
+  upBtn.innerHTML = icons.arrowUp;
   upBtn.title = `Move ${file.name} up`;
   upBtn.setAttribute("aria-label", `Move ${file.name} up`);
   upBtn.disabled = !canMoveUp;
@@ -1902,7 +1897,7 @@ function appendMoveButtons(actions, file, { isSearching = false } = {}) {
   const downBtn = document.createElement("button");
   downBtn.type = "button";
   downBtn.className = "tree-action-btn move-btn";
-  downBtn.innerHTML = ARROW_DOWN_ICON;
+  downBtn.innerHTML = icons.arrowDown;
   downBtn.title = `Move ${file.name} down`;
   downBtn.setAttribute("aria-label", `Move ${file.name} down`);
   downBtn.disabled = !canMoveDown;
@@ -1923,7 +1918,7 @@ function createFileRow(node, depth, { isSearching = false } = {}) {
 
   const extBadge = document.createElement("span");
   extBadge.className = `badge ${file.extension}`;
-  extBadge.textContent = file.extension;
+  extBadge.innerHTML = `${icons.fileText}<span>${file.extension}</span>`;
 
   const name = document.createElement("span");
   name.className = "file-name";
@@ -1938,7 +1933,7 @@ function createFileRow(node, depth, { isSearching = false } = {}) {
   const editBtn = document.createElement("button");
   editBtn.type = "button";
   editBtn.className = "edit-btn";
-  editBtn.innerHTML = EDIT_ICON;
+  editBtn.innerHTML = icons.edit;
   editBtn.title = `Edit ${file.name}`;
   editBtn.setAttribute("aria-label", `Edit ${file.name}`);
   editBtn.addEventListener("click", () => openEditView(file));
@@ -1946,7 +1941,7 @@ function createFileRow(node, depth, { isSearching = false } = {}) {
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
   deleteBtn.className = "tree-action-btn delete-btn";
-  deleteBtn.innerHTML = DELETE_ICON;
+  deleteBtn.innerHTML = icons.trash;
   deleteBtn.title = `Delete ${file.name}`;
   deleteBtn.setAttribute("aria-label", `Delete ${file.name}`);
   deleteBtn.addEventListener("click", (event) => {
@@ -1987,7 +1982,7 @@ function createPageFolderRow(node, depth, { isSearching = false } = {}) {
 
   const pageBadge = document.createElement("span");
   pageBadge.className = "badge page";
-  pageBadge.textContent = "page folder";
+  pageBadge.innerHTML = `${icons.folder}<span>page folder</span>`;
 
   const label = document.createElement("span");
   label.className = "tree-folder-name";
@@ -2022,7 +2017,7 @@ function createPageFolderRow(node, depth, { isSearching = false } = {}) {
   const editBtn = document.createElement("button");
   editBtn.type = "button";
   editBtn.className = "edit-btn";
-  editBtn.innerHTML = EDIT_ICON;
+  editBtn.innerHTML = icons.edit;
   editBtn.title = `Edit ${pageFile.name}`;
   editBtn.setAttribute("aria-label", `Edit ${pageFile.name}`);
   editBtn.addEventListener("click", (event) => {
@@ -2034,7 +2029,7 @@ function createPageFolderRow(node, depth, { isSearching = false } = {}) {
   const addBtn = document.createElement("button");
   addBtn.type = "button";
   addBtn.className = "tree-action-btn add-btn";
-  addBtn.innerHTML = ADD_ICON;
+  addBtn.innerHTML = icons.plus;
   addBtn.title = `Add to ${node.name}`;
   addBtn.setAttribute("aria-label", `Add file or folder to ${node.name}`);
   addBtn.addEventListener("click", (event) => {
@@ -2046,7 +2041,7 @@ function createPageFolderRow(node, depth, { isSearching = false } = {}) {
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
   deleteBtn.className = "tree-action-btn delete-btn";
-  deleteBtn.innerHTML = DELETE_ICON;
+  deleteBtn.innerHTML = icons.trash;
   deleteBtn.title = `Delete ${node.name}`;
   deleteBtn.setAttribute("aria-label", `Delete page folder ${node.name}`);
   deleteBtn.addEventListener("click", (event) => {
@@ -2119,10 +2114,7 @@ function createFolderRow(node, depth, { isSearching }) {
   summary.append(label);
 
   if (depth === 0 && node.source) {
-    const sourceBadge = document.createElement("span");
-    sourceBadge.className = `badge source ${node.source}`;
-    sourceBadge.textContent = node.source;
-    summary.append(sourceBadge);
+    summary.append(createSourceBadge(node.source));
   }
 
   const { folders: folderCount, files: nestedFileCount } = countTreeContents(node.children);
@@ -2149,7 +2141,7 @@ function createFolderRow(node, depth, { isSearching }) {
   const addBtn = document.createElement("button");
   addBtn.type = "button";
   addBtn.className = "tree-action-btn add-btn";
-  addBtn.innerHTML = ADD_ICON;
+  addBtn.innerHTML = icons.plus;
   addBtn.title = `Add to ${label.textContent}`;
   addBtn.setAttribute("aria-label", `Add file or folder to ${label.textContent}`);
   addBtn.addEventListener("click", (event) => {
@@ -2164,7 +2156,7 @@ function createFolderRow(node, depth, { isSearching }) {
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "tree-action-btn delete-btn";
-    deleteBtn.innerHTML = DELETE_ICON;
+    deleteBtn.innerHTML = icons.trash;
     deleteBtn.title = `Delete ${node.name}`;
     deleteBtn.setAttribute("aria-label", `Delete folder ${node.name}`);
     deleteBtn.addEventListener("click", (event) => {
@@ -2702,6 +2694,8 @@ function createImageLightbox() {
     },
   };
 }
+
+editBackBtn.insertAdjacentHTML("afterbegin", icons.chevronLeft);
 
 editBackBtn.addEventListener("click", showListView);
 editSaveBtn.addEventListener("click", saveCurrentFile);

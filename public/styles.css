@@ -373,6 +373,10 @@ details[open] > .tree-folder-header::before {
   background: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
 }
 
+.tree-file:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
 .tree-file .file-name {
   flex: 1;
   min-width: 0;
@@ -402,7 +406,9 @@ details[open] > .tree-folder-header::before {
 }
 
 .badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   min-width: 2.75rem;
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
@@ -410,6 +416,11 @@ details[open] > .tree-folder-header::before {
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
+}
+
+.badge svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .badge.md {
@@ -509,6 +520,12 @@ details[open] > .tree-folder-header::before {
   cursor: pointer;
 }
 
+.tree-action-btn svg,
+.edit-btn svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 .tree-action-btn.move-btn:disabled,
 .edit-btn.move-btn:disabled {
   opacity: 0.35;
@@ -592,6 +609,11 @@ details[open] > .tree-folder-header::before {
   gap: 0.35rem;
   padding: 0.45rem 0.75rem;
   font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.edit-back-btn svg {
+  display: block;
   flex-shrink: 0;
 }
 
