@@ -1,6 +1,6 @@
 import { icons } from "./icons.js";
 import { createFrontmatterEditor } from "./frontmatter-editor.js";
-import { normalizeFrontmatter } from "./frontmatter.js";
+import { normalizeFrontmatter, prepareImportedFrontmatter } from "./frontmatter.js";
 
 const folderInput = document.getElementById("folder-path");
 const browseBtn = document.getElementById("browse-btn");
@@ -366,6 +366,46 @@ function saveEditorCaret() {
   return { lineIndex: lineElements.length, offset: 0 };
 }
 
+function normalizeEditorDom() {
+  for (const child of [...markdownEditor.childNodes]) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      if (!child.textContent?.trim()) {
+        child.remove();
+        continue;
+      }
+
+      const paragraph = document.createElement("p");
+      paragraph.textContent = child.textContent;
+      child.replaceWith(paragraph);
+      continue;
+    }
+
+    if (child.nodeType !== Node.ELEMENT_NODE) {
+      child.remove();
+      continue;
+    }
+
+    const tagName = child.tagName.toLowerCase();
+    if (tagName === "br") {
+      child.remove();
+      continue;
+    }
+
+    if (tagName === "div" && !child.matches(EDITOR_LINE_SELECTOR)) {
+      const paragraph = document.createElement("p");
+      while (child.firstChild) {
+        paragraph.appendChild(child.firstChild);
+      }
+
+      if (paragraph.childNodes.length === 0) {
+        paragraph.append(document.createElement("br"));
+      }
+
+      child.replaceWith(paragraph);
+    }
+  }
+}
+
 function getEditorLineElements() {
   return [...markdownEditor.children].filter((child) => child.matches(EDITOR_LINE_SELECTOR));
 }
@@ -375,6 +415,7 @@ function getEditorLines() {
 }
 
 function getEditorContent() {
+  normalizeEditorDom();
   return getEditorLines().join("\n");
 }
 
@@ -810,9 +851,8 @@ function reevaluateMarkdownEditorLines() {
     return;
   }
 
-  const lineElements = [...markdownEditor.children].filter((child) =>
-    child.matches(EDITOR_LINE_SELECTOR),
-  );
+  normalizeEditorDom();
+  const lineElements = getEditorLineElements();
   const lineStates = getEditorLineStates(lineElements.map(getEditorLineText));
 
   lineElements.forEach((child, index) => {
@@ -1667,12 +1707,13 @@ async function saveCurrentFile() {
 
   flushEditorHistory();
   currentEditFrontmatter = normalizeFrontmatter(frontmatterEditor.getValue());
-  const content = buildFileContent(currentEditFrontmatter, getEditorContent());
 
   isSavingFile = true;
   setSaveButtonState({ label: "Saving…", disabled: true });
 
-  try {
+  const writeEditorContent = async () => {
+    const body = getEditorContent();
+    const content = buildFileContent(currentEditFrontmatter, body);
     const response = await fetch("/api/file", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1682,6 +1723,11 @@ async function saveCurrentFile() {
       }),
     });
     const data = await response.json();
+    return { body, content, response, data };
+  };
+
+  try {
+    let { body, content, response, data } = await writeEditorContent();
 
     if (!response.ok) {
       setSaveButtonState({
@@ -1693,7 +1739,21 @@ async function saveCurrentFile() {
       return;
     }
 
-    const { frontmatter, body } = splitFrontmatter(content);
+    const latestBody = getEditorContent();
+    if (latestBody !== body) {
+      ({ body, content, response, data } = await writeEditorContent());
+      if (!response.ok) {
+        setSaveButtonState({
+          label: data.error ?? "Save failed",
+          disabled: false,
+          error: true,
+        });
+        resetSaveButtonSoon(2500);
+        return;
+      }
+    }
+
+    const { frontmatter, body: savedBody } = splitFrontmatter(content);
     currentEditFrontmatter = normalizeFrontmatter(frontmatter ?? "");
     frontmatterEditor.setValue(currentEditFrontmatter ?? "");
     updateEditHeader(currentEditFile, currentEditFrontmatter);
@@ -1707,8 +1767,8 @@ async function saveCurrentFile() {
       updateFileResults();
     }
 
-    renderMarkdownEditor(body);
-    resetEditorHistory(body);
+    renderMarkdownEditor(savedBody);
+    resetEditorHistory(savedBody);
     setSaveButtonState({ label: "Saved", disabled: false });
     resetSaveButtonSoon();
   } catch {
@@ -2332,7 +2392,40 @@ async function scanFolder(pathValue = folderInput.value.trim()) {
   }
 }
 
-async function createEntry(parentPath, name) {
+function isMarkdownEntryName(name) {
+  const lower = name.trim().toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".mdx");
+}
+
+function getPathsToExpand(relativePath) {
+  const normalized = normalizeRelativePath(relativePath);
+  const paths = new Set();
+
+  if (!normalized) {
+    return paths;
+  }
+
+  let current = "";
+  for (const segment of normalized.split("/")) {
+    current = current ? `${current}/${segment}` : segment;
+    paths.add(current);
+  }
+
+  return paths;
+}
+
+async function fetchFileFrontmatter(absolutePath) {
+  const response = await fetch(`/api/file?path=${encodeURIComponent(absolutePath)}`);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error ?? "Could not read file");
+  }
+
+  return data.frontmatter ?? "";
+}
+
+async function createEntry(parentPath, name, { frontmatter = null } = {}) {
   if (!currentProjectPath) {
     return { ok: false, error: "Choose a project folder first" };
   }
@@ -2360,6 +2453,7 @@ async function createEntry(parentPath, name) {
         projectPath: currentProjectPath,
         parentPath,
         name: trimmedName,
+        ...(frontmatter ? { frontmatter } : {}),
       }),
     });
     const data = await response.json();
@@ -2634,7 +2728,298 @@ function createConfirmDeleteDialog() {
 
 const { openConfirmDeleteDialog } = createConfirmDeleteDialog();
 
-function createNewItemDialog() {
+function createFrontmatterSourceDialog() {
+  const dialog = document.createElement("dialog");
+  dialog.id = "frontmatter-source-dialog";
+  dialog.className = "frontmatter-source-dialog";
+  dialog.innerHTML = `
+    <div class="dialog-header">
+      <h2>Import frontmatter from</h2>
+      <button type="button" class="dialog-close frontmatter-source-dialog-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="frontmatter-source-body">
+      <p class="frontmatter-source-hint">Choose a markdown file to copy its frontmatter.</p>
+      <p class="frontmatter-source-error" hidden></p>
+      <ul class="frontmatter-source-tree file-tree"></ul>
+    </div>
+  `;
+
+  const closeBtn = dialog.querySelector(".frontmatter-source-dialog-close");
+  const treeRoot = dialog.querySelector(".frontmatter-source-tree");
+  const errorEl = dialog.querySelector(".frontmatter-source-error");
+  let onSelect = null;
+
+  function clearDialogError() {
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+  }
+
+  function showDialogError(message) {
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  }
+
+  function createPickerNewPageRow(name, depth) {
+    const item = document.createElement("li");
+    item.className = "tree-file frontmatter-source-file frontmatter-source-new-page";
+    item.style.setProperty("--depth", depth);
+    item.dataset.newPageTarget = "true";
+
+    const badge = document.createElement("span");
+    badge.className = "badge new-page";
+    badge.innerHTML = `${icons.fileText}<span>new</span>`;
+
+    const label = document.createElement("span");
+    label.className = "file-name";
+    label.textContent = name;
+
+    const main = document.createElement("div");
+    main.className = "tree-file-main";
+    main.append(badge, label);
+    item.append(main);
+
+    return item;
+  }
+
+  function appendPickerChildren(container, node, depth, expandPaths, pickerContext) {
+    for (const child of node.children) {
+      container.append(createPickerRow(child, depth, expandPaths, pickerContext));
+    }
+
+    if (pickerContext.newPageName && node.path === pickerContext.parentPath) {
+      container.append(createPickerNewPageRow(pickerContext.newPageName, depth));
+    }
+  }
+
+  function createPickerFolderRow(node, depth, expandPaths, pickerContext) {
+    const item = document.createElement("li");
+    item.className = "tree-folder frontmatter-source-folder";
+    item.style.setProperty("--depth", depth);
+
+    const details = document.createElement("details");
+    details.open = expandPaths.has(node.path);
+
+    if (node.path === pickerContext.parentPath && !pickerContext.newPageName) {
+      item.dataset.parentTarget = "true";
+    }
+
+    const summary = document.createElement("summary");
+    summary.className = "tree-folder-header frontmatter-source-folder-header";
+
+    const label = document.createElement("span");
+    label.className = "tree-folder-name";
+    label.textContent = depth === 0 ? (node.path || node.name) : node.name;
+
+    if (depth > 0) {
+      summary.append(
+        createFolderMain(createFolderPrefix(createFolderBadge(), createFolderChevron()), label),
+      );
+    } else if (depth === 0 && node.source) {
+      summary.append(
+        createFolderMain(
+          createFolderPrefix(createSourceBadge(node.source), createFolderChevron()),
+          label,
+        ),
+      );
+    } else {
+      summary.append(createFolderMain(createFolderPrefix(createFolderChevron()), label));
+    }
+
+    details.append(summary);
+
+    if (node.children.length > 0 || (pickerContext.newPageName && node.path === pickerContext.parentPath)) {
+      const children = document.createElement("ul");
+      children.className = "tree-children";
+      appendPickerChildren(children, node, depth + 1, expandPaths, pickerContext);
+      details.append(children);
+    }
+
+    item.append(details);
+    return item;
+  }
+
+  function createPickerPageFolderRow(node, depth, expandPaths, pickerContext) {
+    const { pageFile } = node;
+    const item = document.createElement("li");
+    item.className = "tree-folder tree-page-folder frontmatter-source-folder";
+    item.style.setProperty("--depth", depth);
+
+    const details = document.createElement("details");
+    details.open = expandPaths.has(node.path);
+
+    if (node.path === pickerContext.parentPath && !pickerContext.newPageName) {
+      item.dataset.parentTarget = "true";
+    }
+
+    const summary = document.createElement("summary");
+    summary.className = "tree-folder-header frontmatter-source-folder-header";
+
+    const pageBadge = document.createElement("span");
+    pageBadge.className = "badge page";
+    pageBadge.innerHTML = `${icons.folder}<span>page folder</span>`;
+
+    const label = document.createElement("span");
+    label.className = "tree-folder-name";
+    label.textContent = node.name;
+
+    summary.append(
+      createFolderMain(createFolderPrefix(pageBadge, createFolderChevron()), label),
+    );
+
+    details.append(summary);
+
+    const children = document.createElement("ul");
+    children.className = "tree-children";
+    children.append(createPickerFileRow(
+      {
+        type: "file",
+        name: pageFile.name,
+        path: pageFile.relativePath,
+        file: pageFile,
+      },
+      depth + 1,
+    ));
+    appendPickerChildren(children, node, depth + 1, expandPaths, pickerContext);
+    details.append(children);
+
+    item.append(details);
+    return item;
+  }
+
+  function createPickerFileRow(node, depth) {
+    const file = node.file;
+    const item = document.createElement("li");
+    item.className = "tree-file frontmatter-source-file";
+    item.style.setProperty("--depth", depth);
+
+    const extBadge = document.createElement("span");
+    extBadge.className = `badge ${file.extension}`;
+    extBadge.innerHTML = `${icons.fileText}<span>${file.extension}</span>`;
+
+    const name = document.createElement("span");
+    name.className = "file-name";
+    name.textContent = file.name;
+    name.title = file.relativePath;
+
+    const main = document.createElement("div");
+    main.className = "tree-file-main";
+    main.append(extBadge, name);
+    item.append(main);
+
+    item.addEventListener("click", async () => {
+      if (!onSelect) {
+        return;
+      }
+
+      clearDialogError();
+
+      try {
+        const sourceFrontmatter = await fetchFileFrontmatter(file.absolutePath);
+        const importedFrontmatter = prepareImportedFrontmatter(sourceFrontmatter);
+
+        if (!importedFrontmatter) {
+          showDialogError(`"${file.name}" has no frontmatter to import.`);
+          return;
+        }
+
+        onSelect({
+          file,
+          frontmatter: importedFrontmatter,
+        });
+        dialog.close();
+      } catch (error) {
+        showDialogError(error.message ?? "Could not import frontmatter");
+      }
+    });
+
+    return item;
+  }
+
+  function createPickerRow(node, depth, expandPaths, pickerContext) {
+    if (node.type === "folder") {
+      return createPickerFolderRow(node, depth, expandPaths, pickerContext);
+    }
+
+    if (node.type === "page-folder") {
+      return createPickerPageFolderRow(node, depth, expandPaths, pickerContext);
+    }
+
+    return createPickerFileRow(node, depth);
+  }
+
+  function scrollPickerToTarget() {
+    const target =
+      treeRoot.querySelector("[data-new-page-target='true']") ??
+      treeRoot.querySelector("[data-parent-target='true']");
+
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({ block: "center" });
+  }
+
+  function renderPickerTree(parentPath, newPageName = "") {
+    treeRoot.replaceChildren();
+
+    const expandPaths = getPathsToExpand(parentPath);
+    const pickerContext = {
+      parentPath: normalizeRelativePath(parentPath),
+      newPageName: newPageName.trim(),
+    };
+    const markdownFiles = scannedFiles.filter((file) =>
+      ["md", "mdx"].includes(file.extension),
+    );
+    const tree = buildFileTree(markdownFiles, {
+      directories: scannedDirectories,
+      scanTargets: lastScanTargets,
+    });
+
+    if (tree.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "frontmatter-source-empty";
+      empty.textContent = "No markdown files found in this project.";
+      treeRoot.append(empty);
+      return;
+    }
+
+    for (const node of tree) {
+      treeRoot.append(createPickerRow(node, 0, expandPaths, pickerContext));
+    }
+  }
+
+  closeBtn.addEventListener("click", () => {
+    dialog.close();
+  });
+
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("close", () => {
+    onSelect = null;
+    clearDialogError();
+    treeRoot.replaceChildren();
+  });
+
+  function openFrontmatterSourceDialog({ parentPath, newPageName = "" }, selectHandler) {
+    onSelect = selectHandler;
+    clearDialogError();
+    renderPickerTree(parentPath, newPageName);
+    dialog.showModal();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(scrollPickerToTarget);
+    });
+  }
+
+  document.body.append(dialog);
+
+  return { openFrontmatterSourceDialog };
+}
+
+function createNewItemDialog({ openFrontmatterSourceDialog }) {
   const dialog = document.createElement("dialog");
   dialog.id = "new-item-dialog";
   dialog.className = "new-item-dialog";
@@ -2654,6 +3039,10 @@ function createNewItemDialog() {
           placeholder="post.md or my-folder"
         />
         <p class="new-item-hint">.md / .mdx creates a file; anything else creates a folder.</p>
+        <div class="new-item-frontmatter" hidden>
+          <button type="button" class="new-item-import-frontmatter">Import frontmatter from file…</button>
+          <p class="new-item-frontmatter-source" hidden></p>
+        </div>
         <p class="new-item-error" hidden></p>
       </div>
       <div class="new-item-form-actions">
@@ -2665,8 +3054,12 @@ function createNewItemDialog() {
   const closeBtn = dialog.querySelector(".new-item-dialog-close");
   const form = dialog.querySelector(".new-item-form");
   const nameInput = dialog.querySelector("#new-item-name");
+  const frontmatterSection = dialog.querySelector(".new-item-frontmatter");
+  const importFrontmatterBtn = dialog.querySelector(".new-item-import-frontmatter");
+  const frontmatterSourceEl = dialog.querySelector(".new-item-frontmatter-source");
   const errorEl = dialog.querySelector(".new-item-error");
   let pendingParentPath = "";
+  let pendingImportedFrontmatter = null;
 
   function clearDialogError() {
     errorEl.hidden = true;
@@ -2676,6 +3069,28 @@ function createNewItemDialog() {
   function showDialogError(message) {
     errorEl.textContent = message;
     errorEl.hidden = false;
+  }
+
+  function clearImportedFrontmatter() {
+    pendingImportedFrontmatter = null;
+    frontmatterSourceEl.hidden = true;
+    frontmatterSourceEl.textContent = "";
+  }
+
+  function updateFrontmatterImportVisibility() {
+    const showImport = isMarkdownEntryName(nameInput.value);
+    frontmatterSection.hidden = !showImport;
+
+    if (!showImport) {
+      clearImportedFrontmatter();
+    }
+  }
+
+  function setImportedFrontmatter(sourceName, frontmatter) {
+    pendingImportedFrontmatter = frontmatter;
+    frontmatterSourceEl.textContent = `Using frontmatter from ${sourceName}`;
+    frontmatterSourceEl.hidden = false;
+    clearDialogError();
   }
 
   closeBtn.addEventListener("click", () => {
@@ -2690,11 +3105,29 @@ function createNewItemDialog() {
 
   dialog.addEventListener("close", () => {
     pendingParentPath = "";
+    pendingImportedFrontmatter = null;
     form.reset();
     clearDialogError();
+    clearImportedFrontmatter();
+    frontmatterSection.hidden = true;
   });
 
-  nameInput.addEventListener("input", clearDialogError);
+  nameInput.addEventListener("input", () => {
+    clearDialogError();
+    updateFrontmatterImportVisibility();
+  });
+
+  importFrontmatterBtn.addEventListener("click", () => {
+    openFrontmatterSourceDialog(
+      {
+        parentPath: pendingParentPath,
+        newPageName: nameInput.value.trim(),
+      },
+      ({ file, frontmatter }) => {
+        setImportedFrontmatter(file.name, frontmatter);
+      },
+    );
+  });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -2705,7 +3138,9 @@ function createNewItemDialog() {
 
     clearDialogError();
 
-    const result = await createEntry(pendingParentPath, name);
+    const result = await createEntry(pendingParentPath, name, {
+      frontmatter: pendingImportedFrontmatter,
+    });
     if (!result.ok) {
       showDialogError(result.error);
       nameInput.focus();
@@ -2718,7 +3153,9 @@ function createNewItemDialog() {
 
   function openNewItemDialog(parentPath) {
     pendingParentPath = parentPath;
+    clearImportedFrontmatter();
     clearDialogError();
+    updateFrontmatterImportVisibility();
     dialog.showModal();
     nameInput.focus();
   }
@@ -2728,7 +3165,8 @@ function createNewItemDialog() {
   return { openNewItemDialog };
 }
 
-const { openNewItemDialog } = createNewItemDialog();
+const { openFrontmatterSourceDialog } = createFrontmatterSourceDialog();
+const { openNewItemDialog } = createNewItemDialog({ openFrontmatterSourceDialog });
 
 browseBtn.addEventListener("click", browseFolder);
 scanBtn.addEventListener("click", () => scanFolder());
@@ -2797,6 +3235,14 @@ function createImageLightbox() {
 }
 
 editBackBtn.insertAdjacentHTML("afterbegin", icons.chevronLeft);
+
+try {
+  markdownEditor.focus({ preventScroll: true });
+  document.execCommand("defaultParagraphSeparator", false, "p");
+  markdownEditor.blur();
+} catch {
+  // Browser may not support defaultParagraphSeparator.
+}
 
 editBackBtn.addEventListener("click", showListView);
 editSaveBtn.addEventListener("click", saveCurrentFile);

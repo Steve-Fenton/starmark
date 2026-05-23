@@ -552,3 +552,38 @@ export function defaultValueForType(type) {
       return "";
   }
 }
+
+export function getTodayDateString() {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+export function prepareImportedFrontmatter(frontmatterText) {
+  const trimmed = (frontmatterText ?? "").trim();
+  if (trimmed === "") {
+    return null;
+  }
+
+  let data;
+  try {
+    data = parseFrontmatter(trimmed);
+  } catch {
+    return null;
+  }
+
+  if (!isPlainObject(data)) {
+    return null;
+  }
+
+  delete data.modDate;
+
+  if (Object.prototype.hasOwnProperty.call(data, "pubDate")) {
+    data.pubDate = getTodayDateString();
+  }
+
+  return normalizeFrontmatter(stringifyFrontmatter(data));
+}

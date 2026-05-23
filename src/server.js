@@ -467,7 +467,7 @@ app.post("/api/scan", async (req, res) => {
 });
 
 app.post("/api/entry", async (req, res) => {
-  const { projectPath, parentPath = "", name } = req.body ?? {};
+  const { projectPath, parentPath = "", name, frontmatter } = req.body ?? {};
 
   if (!projectPath || typeof projectPath !== "string") {
     return res.status(400).json({ error: "A project path is required" });
@@ -531,11 +531,20 @@ app.post("/api/entry", async (req, res) => {
 
   try {
     if (isMarkdownFileName(nameResult.name)) {
-      const initialContent = await buildInitialFileContent(
-        resolvedProject,
-        targetRelativePath.replace(/\\/g, "/"),
-        source,
-      );
+      let initialContent;
+      const trimmedFrontmatter =
+        typeof frontmatter === "string" ? frontmatter.trim() : "";
+
+      if (trimmedFrontmatter) {
+        initialContent = `---\n${trimmedFrontmatter}\n---\n`;
+      } else {
+        initialContent = await buildInitialFileContent(
+          resolvedProject,
+          targetRelativePath.replace(/\\/g, "/"),
+          source,
+        );
+      }
+
       await fs.writeFile(targetResolved.target, initialContent, "utf8");
       const ext = path.extname(nameResult.name).toLowerCase().slice(1);
 

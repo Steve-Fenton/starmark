@@ -1283,6 +1283,94 @@ details[open] > .tree-folder-header .tree-folder-chevron {
   margin-top: 0.15rem;
 }
 
+.new-item-frontmatter {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.new-item-import-frontmatter {
+  justify-self: start;
+}
+
+.new-item-frontmatter-source {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.new-item-frontmatter-source[hidden] {
+  display: none;
+}
+
+.frontmatter-source-dialog {
+  width: min(560px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  overflow: auto;
+}
+
+.frontmatter-source-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.frontmatter-source-body {
+  margin: 0.75rem 1.25rem 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.frontmatter-source-hint {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.frontmatter-source-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #ff8b8b;
+}
+
+.frontmatter-source-error[hidden] {
+  display: none;
+}
+
+.frontmatter-source-tree {
+  max-height: min(420px, calc(100vh - 12rem));
+  overflow: auto;
+}
+
+.frontmatter-source-tree .frontmatter-source-folder-header {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.frontmatter-source-tree .frontmatter-source-file {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.frontmatter-source-new-page {
+  cursor: default;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.frontmatter-source-new-page:hover {
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.badge.new-page {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.frontmatter-source-empty {
+  padding: 1rem;
+  color: var(--muted);
+}
+
 .confirm-dialog {
   width: min(420px, calc(100vw - 2rem));
   padding: 0;
