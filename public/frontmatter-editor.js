@@ -1,5 +1,6 @@
 import { icons } from "./icons.js";
 import { createMediaDialog } from "./media-browser.js";
+import { getMediaDir } from "./settings.js";
 import {
   defaultValueForType,
   inferValueType,
@@ -150,6 +151,7 @@ export function createFrontmatterEditor(root, { onChange, getProjectPath } = {})
   if (getProjectPath) {
     const { dialog, openMediaDialog } = createMediaDialog({
       getProjectPath,
+      getInitialDir: () => getMediaDir(),
       title: "Choose image",
       selectMode: "path",
       dialogId: "media-dialog-frontmatter",

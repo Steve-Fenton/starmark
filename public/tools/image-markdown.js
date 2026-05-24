@@ -1,6 +1,7 @@
 import { attachToolbarButton, createToolbarButton } from "../toolkit.js";
 import { icons } from "../icons.js";
 import { createMediaDialog } from "../media-browser.js";
+import { getMediaDir } from "../settings.js";
 
 function escapeMarkdownAlt(value) {
   return value.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
@@ -24,6 +25,7 @@ export default {
   mount(container, api) {
     const { dialog, openMediaDialog } = createMediaDialog({
       getProjectPath: () => api.getProjectPath(),
+      getInitialDir: () => getMediaDir(),
       title: "Insert image",
       selectMode: "details",
       dialogId: "media-dialog-insert",

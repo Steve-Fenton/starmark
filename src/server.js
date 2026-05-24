@@ -6,9 +6,10 @@ import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { buildInitialFileContent } from "./content-config.js";
 import {
+  readProjectSettings,
   readUserConfig,
   saveProjects,
-  saveSettings,
+  saveProjectSettings,
   normalizeSettings,
 } from "./user-config.js";
 
@@ -355,20 +356,30 @@ app.get("/api/projects", async (_req, res) => {
   res.json({ projects });
 });
 
-app.get("/api/settings", async (_req, res) => {
-  const { settings } = await readUserConfig();
+app.get("/api/settings", async (req, res) => {
+  const { project: projectPath } = req.query;
+
+  if (!projectPath || typeof projectPath !== "string") {
+    return res.status(400).json({ error: "A project path is required" });
+  }
+
+  const settings = await readProjectSettings(projectPath);
   res.json({ settings });
 });
 
 app.put("/api/settings", async (req, res) => {
-  const { settings } = req.body ?? {};
+  const { project: projectPath, settings } = req.body ?? {};
+
+  if (!projectPath || typeof projectPath !== "string") {
+    return res.status(400).json({ error: "A project path is required" });
+  }
 
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
     return res.status(400).json({ error: "A settings object is required" });
   }
 
   const normalized = normalizeSettings(settings);
-  await saveSettings(normalized);
+  await saveProjectSettings(projectPath, normalized);
   res.json({ settings: normalized });
 });
 

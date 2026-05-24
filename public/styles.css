@@ -156,6 +156,18 @@ body::before {
   gap: 0.85rem;
 }
 
+.settings-project {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.settings-form.is-disabled .settings-field select,
+.settings-form.is-disabled .settings-field input[type="text"] {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .settings-field label {
   display: block;
   margin-bottom: 0.4rem;
@@ -163,7 +175,8 @@ body::before {
   color: var(--muted);
 }
 
-.settings-field select {
+.settings-field select,
+.settings-field input[type="text"] {
   width: 100%;
   padding: 0.75rem 0.85rem;
   border: 1px solid var(--border);

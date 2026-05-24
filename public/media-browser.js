@@ -14,6 +14,7 @@ const IMAGE_UPLOAD_EXTENSIONS = new Set([
 
 export function createMediaDialog({
   getProjectPath,
+  getInitialDir = () => "img",
   title = "Media",
   selectMode = "path",
   onSelect,
@@ -90,7 +91,7 @@ export function createMediaDialog({
   const imageCaptionInput = dialog.querySelector(`#${dialogId}-image-caption`);
   const imageBackBtn = dialog.querySelector(".image-back-btn");
 
-  let currentMediaDir = "img";
+  let currentMediaDir = getInitialDir();
   let isMediaUploading = false;
 
   function formatMediaDirLabel(relativeDir) {
@@ -399,9 +400,10 @@ export function createMediaDialog({
     onOpen?.();
     showMediaBrowserView();
     mediaSearchInput.value = "";
-    currentMediaDir = "img";
+    const initialDir = getInitialDir();
+    currentMediaDir = initialDir;
     dialog.showModal();
-    loadMediaDirectory("img");
+    loadMediaDirectory(initialDir);
   }
 
   closeBtn.addEventListener("click", () => {

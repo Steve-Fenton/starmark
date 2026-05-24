@@ -63,12 +63,25 @@
       </div>
 
       <form id="settings-form" class="settings-form">
+        <p id="settings-project" class="settings-project"></p>
         <div class="settings-field">
           <label for="setting-images">Images</label>
           <select id="setting-images" name="images">
             <option value="accelerator">Accelerator</option>
             <option value="markdown">Markdown</option>
           </select>
+        </div>
+        <div class="settings-field">
+          <label for="setting-media-dir">Media library folder</label>
+          <input
+            id="setting-media-dir"
+            name="mediaDir"
+            type="text"
+            value="public/img"
+            placeholder="public/img"
+            spellcheck="false"
+            autocomplete="off"
+          />
         </div>
         <p id="settings-error" class="settings-error" hidden></p>
       </form>

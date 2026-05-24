@@ -3,6 +3,33 @@ import fs from "fs/promises";
 import path from "path";
 import { Given, When, Then } from "@cucumber/cucumber";
 
+function substituteSamplePaths(value) {
+  return String(value)
+    .replaceAll("SAMPLE_PROJECT", this.sampleProjectPath)
+    .replaceAll("OTHER_PROJECT", this.otherProjectPath);
+}
+
+function substituteSamplePathsInValue(value) {
+  if (typeof value === "string") {
+    return substituteSamplePaths.call(this, value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => substituteSamplePathsInValue.call(this, entry));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        substituteSamplePathsInValue.call(this, entry),
+      ]),
+    );
+  }
+
+  return value;
+}
+
 Given("the sample Astro project fixture", function () {
   assert.ok(this.sampleProjectPath, "Sample project path is configured");
 });
@@ -14,14 +41,14 @@ Given('the markdown file {string}', async function (relativePath) {
 });
 
 When("I request GET {string}", async function (url) {
-  this.lastResponse = await this.agent.get(url);
+  this.lastResponse = await this.agent.get(substituteSamplePaths.call(this, url));
 });
 
 When("I request PUT {string} with JSON:", async function (url, docString) {
   this.lastResponse = await this.agent
-    .put(url)
+    .put(substituteSamplePaths.call(this, url))
     .set("Content-Type", "application/json")
-    .send(JSON.parse(docString));
+    .send(substituteSamplePathsInValue.call(this, JSON.parse(docString)));
 });
 
 When("I scan the sample project", async function () {

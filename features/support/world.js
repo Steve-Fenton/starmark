@@ -12,6 +12,7 @@ export class ApiWorld {
     this.agent = request(app);
     this.lastResponse = null;
     this.sampleProjectPath = path.join(REPO_ROOT, "fixtures/sample-astro");
+    this.otherProjectPath = REPO_ROOT;
     this.currentFilePath = null;
     this.currentFileAbsolutePath = null;
     this.originalFileContent = null;

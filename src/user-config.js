@@ -3,10 +3,34 @@ import path from "path";
 
 export const DEFAULT_SETTINGS = {
   images: "accelerator",
+  mediaDir: "public/img",
 };
+
+export function normalizeMediaDir(value) {
+  let normalized = String(value ?? DEFAULT_SETTINGS.mediaDir)
+    .trim()
+    .replace(/\\/g, "/");
+
+  if (normalized.startsWith("public/")) {
+    normalized = normalized.slice("public/".length);
+  } else if (normalized === "public") {
+    normalized = "";
+  }
+
+  return normalized.replace(/^\/+|\/+$/g, "");
+}
+
+export function formatMediaDir(value) {
+  const relative = normalizeMediaDir(value);
+  return relative ? `public/${relative}` : "public/";
+}
 
 export function getUserIniPath(cwd = process.cwd()) {
   return path.join(cwd, ".starmark", "user.ini");
+}
+
+export function resolveProjectKey(projectPath) {
+  return path.resolve(projectPath).replace(/\\/g, "/").toLowerCase();
 }
 
 function parseIniSections(text) {
@@ -45,6 +69,10 @@ export function normalizeSettings(partial = {}) {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(partial, "mediaDir")) {
+    settings.mediaDir = formatMediaDir(partial.mediaDir);
+  }
+
   return settings;
 }
 
@@ -52,14 +80,18 @@ function parseSettingsLines(lines = []) {
   const settings = { ...DEFAULT_SETTINGS };
 
   for (const line of lines) {
-    const match = line.match(/^images=(.+)$/i);
-    if (!match) {
+    const imagesMatch = line.match(/^images=(.+)$/i);
+    if (imagesMatch) {
+      const value = imagesMatch[1].trim().toLowerCase();
+      if (value === "accelerator" || value === "markdown") {
+        settings.images = value;
+      }
       continue;
     }
 
-    const value = match[1].trim().toLowerCase();
-    if (value === "accelerator" || value === "markdown") {
-      settings.images = value;
+    const mediaDirMatch = line.match(/^mediaDir=(.*)$/i);
+    if (mediaDirMatch) {
+      settings.mediaDir = formatMediaDir(mediaDirMatch[1]);
     }
   }
 
@@ -120,15 +152,60 @@ async function readIniSections(cwd = process.cwd()) {
   }
 }
 
-async function writeUserConfig({ projects, settings }, cwd = process.cwd()) {
-  const normalizedSettings = normalizeSettings(settings);
-  const lines = [
-    "[projects]",
-    ...projects.map((project) => `path=${project.path}`),
-    "",
-    "[settings]",
-    `images=${normalizedSettings.images}`,
-  ];
+function parseProjectSettingsSections(sections = {}) {
+  const projectSettings = {};
+
+  for (const [sectionName, lines] of Object.entries(sections)) {
+    if (!sectionName.startsWith("settings:")) {
+      continue;
+    }
+
+    const projectKey = sectionName.slice("settings:".length);
+    projectSettings[projectKey] = parseSettingsLines(lines);
+  }
+
+  return projectSettings;
+}
+
+export function getProjectSettings(projectPath, config) {
+  const projectKey = resolveProjectKey(projectPath);
+  if (config.projectSettings[projectKey]) {
+    return { ...config.projectSettings[projectKey] };
+  }
+
+  if (config.legacySettings) {
+    return { ...config.legacySettings };
+  }
+
+  return { ...DEFAULT_SETTINGS };
+}
+
+async function writeUserConfig(
+  { projects, projectSettings = {}, legacySettings = null },
+  cwd = process.cwd(),
+) {
+  const lines = ["[projects]", ...projects.map((project) => `path=${project.path}`), ""];
+
+  if (legacySettings) {
+    const normalizedLegacy = normalizeSettings(legacySettings);
+    lines.push(
+      "[settings]",
+      `images=${normalizedLegacy.images}`,
+      `mediaDir=${normalizedLegacy.mediaDir}`,
+      "",
+    );
+  }
+
+  for (const projectKey of Object.keys(projectSettings).sort()) {
+    const normalized = normalizeSettings(projectSettings[projectKey]);
+    lines.push(
+      `[settings:${projectKey}]`,
+      `images=${normalized.images}`,
+      `mediaDir=${normalized.mediaDir}`,
+      "",
+    );
+  }
+
   const iniPath = path.join(cwd, ".starmark", "user.ini");
 
   await fs.mkdir(path.dirname(iniPath), { recursive: true });
@@ -137,19 +214,31 @@ async function writeUserConfig({ projects, settings }, cwd = process.cwd()) {
 
 export async function readUserConfig(cwd = process.cwd()) {
   const sections = await readIniSections(cwd);
+  const legacySettings = sections.settings
+    ? parseSettingsLines(sections.settings)
+    : null;
 
   return {
     projects: await parseProjectPaths(sections.projects ?? []),
-    settings: parseSettingsLines(sections.settings ?? []),
+    legacySettings,
+    projectSettings: parseProjectSettingsSections(sections),
   };
 }
 
-export async function saveProjects(projects, cwd = process.cwd()) {
-  const { settings } = await readUserConfig(cwd);
-  await writeUserConfig({ projects, settings }, cwd);
+export async function readProjectSettings(projectPath, cwd = process.cwd()) {
+  const config = await readUserConfig(cwd);
+  return getProjectSettings(projectPath, config);
 }
 
-export async function saveSettings(settings, cwd = process.cwd()) {
-  const { projects } = await readUserConfig(cwd);
-  await writeUserConfig({ projects, settings: normalizeSettings(settings) }, cwd);
+export async function saveProjects(projects, cwd = process.cwd()) {
+  const config = await readUserConfig(cwd);
+  await writeUserConfig({ ...config, projects }, cwd);
+}
+
+export async function saveProjectSettings(projectPath, settings, cwd = process.cwd()) {
+  const config = await readUserConfig(cwd);
+  const projectKey = resolveProjectKey(projectPath);
+
+  config.projectSettings[projectKey] = normalizeSettings(settings);
+  await writeUserConfig(config, cwd);
 }

@@ -5,7 +5,7 @@ import {
   prepareMarkdownBodyForEditor,
   prepareMarkdownBodyForSource,
 } from "./markdown-html.js";
-import { getImageMode, getSettings, loadSettings, saveSettings } from "./settings.js";
+import { getImageMode, getSettings, loadSettings, onSettingsChange, saveSettings } from "./settings.js";
 
 const folderInput = document.getElementById("folder-path");
 const browseBtn = document.getElementById("browse-btn");
@@ -46,6 +46,8 @@ const settingsDialog = document.getElementById("settings-dialog");
 const settingsDialogClose = document.getElementById("settings-dialog-close");
 const settingsForm = document.getElementById("settings-form");
 const settingImagesSelect = document.getElementById("setting-images");
+const settingMediaDirInput = document.getElementById("setting-media-dir");
+const settingsProjectLabel = document.getElementById("settings-project");
 const settingsError = document.getElementById("settings-error");
 const topBar = document.querySelector(".top-bar");
 
@@ -66,6 +68,8 @@ let editorHistoryIndex = -1;
 let editorHistoryDebounce = null;
 let isApplyingEditorHistory = false;
 const historyChangeListeners = [];
+let imageAcceleratorBtn = null;
+let imageMarkdownBtn = null;
 
 const HISTORY_DEBOUNCE_MS = 400;
 const MAX_EDITOR_HISTORY = 100;
@@ -1578,7 +1582,17 @@ function updateFileResults() {
   renderFileTree(tree, { isSearching });
 }
 
-function applyScanData(data) {
+function getProjectLabel(projectPath) {
+  if (!projectPath) {
+    return "";
+  }
+
+  const segments = projectPath.split(/[/\\]/).filter(Boolean);
+  return segments.at(-1) ?? projectPath;
+}
+
+async function applyScanData(data) {
+  const projectChanged = currentProjectPath !== data.projectPath;
   folderInput.value = data.projectPath;
   currentProjectPath = data.projectPath;
   setProjectInUrl(data.projectPath);
@@ -1597,6 +1611,11 @@ function applyScanData(data) {
     lastScanTargets.length === 0;
 
   updateFileResults();
+
+  if (projectChanged) {
+    await loadSettings(data.projectPath);
+    syncImageToolVisibility();
+  }
 }
 
 async function refreshScan() {
@@ -1616,7 +1635,7 @@ async function refreshScan() {
     return null;
   }
 
-  applyScanData(data);
+  await applyScanData(data);
   return data;
 }
 
@@ -2433,7 +2452,7 @@ async function scanFolder(pathValue = folderInput.value.trim()) {
       return;
     }
 
-    applyScanData(data);
+    await applyScanData(data);
     await loadProjects();
     projectsDialog.close();
   } catch {
@@ -3251,6 +3270,33 @@ settingsMenuBtn.innerHTML = icons.settings;
 
 function syncSettingsForm(settings) {
   settingImagesSelect.value = settings.images;
+  settingMediaDirInput.value = settings.mediaDir;
+}
+
+function updateSettingsProjectContext() {
+  const hasProject = Boolean(currentProjectPath);
+  settingsForm.classList.toggle("is-disabled", !hasProject);
+  settingImagesSelect.disabled = !hasProject;
+  settingMediaDirInput.disabled = !hasProject;
+
+  if (!hasProject) {
+    settingsProjectLabel.textContent = "Open a project to configure its settings.";
+    return;
+  }
+
+  settingsProjectLabel.textContent = `Settings for ${getProjectLabel(currentProjectPath)}`;
+}
+
+function syncImageToolVisibility() {
+  const mode = getImageMode();
+
+  if (imageAcceleratorBtn) {
+    imageAcceleratorBtn.hidden = mode !== "accelerator";
+  }
+
+  if (imageMarkdownBtn) {
+    imageMarkdownBtn.hidden = mode !== "markdown";
+  }
 }
 
 function showSettingsError(message) {
@@ -3263,8 +3309,13 @@ function clearSettingsError() {
   settingsError.hidden = true;
 }
 
-settingsMenuBtn.addEventListener("click", () => {
+settingsMenuBtn.addEventListener("click", async () => {
+  if (currentProjectPath) {
+    await loadSettings(currentProjectPath);
+  }
+
   syncSettingsForm(getSettings());
+  updateSettingsProjectContext();
   clearSettingsError();
   settingsDialog.showModal();
 });
@@ -3280,10 +3331,30 @@ settingsDialog.addEventListener("click", (event) => {
 });
 
 settingImagesSelect.addEventListener("change", async () => {
+  if (!currentProjectPath) {
+    return;
+  }
+
   clearSettingsError();
 
   try {
-    await saveSettings({ images: settingImagesSelect.value });
+    await saveSettings({ images: settingImagesSelect.value }, currentProjectPath);
+  } catch {
+    syncSettingsForm(getSettings());
+    showSettingsError("Could not save settings.");
+  }
+});
+
+settingMediaDirInput.addEventListener("change", async () => {
+  if (!currentProjectPath) {
+    return;
+  }
+
+  clearSettingsError();
+
+  try {
+    await saveSettings({ mediaDir: settingMediaDirInput.value }, currentProjectPath);
+    syncSettingsForm(getSettings());
   } catch {
     syncSettingsForm(getSettings());
     showSettingsError("Could not save settings.");
@@ -3442,20 +3513,11 @@ const editorApi = {
 async function initToolbar() {
   const response = await fetch("/api/tools");
   const { tools } = await response.json();
-  const activeImageTool =
-    getImageMode() === "markdown" ? "image-markdown" : "image-accelerator";
 
   let currentGroup = null;
   let groupEl = null;
 
   for (const toolId of tools) {
-    if (
-      (toolId === "image-accelerator" || toolId === "image-markdown") &&
-      toolId !== activeImageTool
-    ) {
-      continue;
-    }
-
     const module = await import(`/tools/${toolId}.js`);
     const tool = module.default;
 
@@ -3474,13 +3536,32 @@ async function initToolbar() {
       editToolbar.append(groupEl);
     }
 
+    if (toolId === "image-accelerator" || toolId === "image-markdown") {
+      const slot = document.createElement("div");
+      slot.className = "toolbar-image-tool";
+      groupEl.append(slot);
+      tool.mount(slot, editorApi);
+
+      const button = slot.querySelector(".toolbar-btn");
+      if (toolId === "image-accelerator") {
+        imageAcceleratorBtn = button;
+      } else {
+        imageMarkdownBtn = button;
+      }
+      continue;
+    }
+
     tool.mount(groupEl, editorApi);
   }
+
+  syncImageToolVisibility();
 }
 
-loadSettings().then(() => {
-  initToolbar();
+onSettingsChange(() => {
+  syncImageToolVisibility();
 });
+
+initToolbar();
 
 syncTopBarHeight();
 window.addEventListener("resize", syncTopBarHeight);

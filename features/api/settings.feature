@@ -1,14 +1,38 @@
+@settings
 Feature: User settings
 
-  Scenario: Settings endpoint returns defaults
+  Scenario: Settings endpoint requires a project
     When I request GET "/api/settings"
+    Then the response status should be 400
+
+  Scenario: Settings endpoint returns defaults for a project
+    When I request GET "/api/settings?project=SAMPLE_PROJECT"
     Then the response status should be 200
     And the response JSON should include "settings"
+    And the response JSON settings "images" should be "accelerator"
+    And the response JSON settings "mediaDir" should be "public/img"
 
-  Scenario: Settings can be updated
+  Scenario: Settings can be updated for a project
     When I request PUT "/api/settings" with JSON:
       """
-      {"settings":{"images":"markdown"}}
+      {"project":"SAMPLE_PROJECT","settings":{"images":"markdown","mediaDir":"public/docs/img"}}
       """
     Then the response status should be 200
     And the response JSON settings "images" should be "markdown"
+    And the response JSON settings "mediaDir" should be "public/docs/img"
+
+  Scenario: Settings are stored per project
+    When I request PUT "/api/settings" with JSON:
+      """
+      {"project":"SAMPLE_PROJECT","settings":{"images":"markdown","mediaDir":"public/docs/img"}}
+      """
+    And I request PUT "/api/settings" with JSON:
+      """
+      {"project":"OTHER_PROJECT","settings":{"images":"accelerator","mediaDir":"public/img"}}
+      """
+    And I request GET "/api/settings?project=SAMPLE_PROJECT"
+    Then the response JSON settings "images" should be "markdown"
+    And the response JSON settings "mediaDir" should be "public/docs/img"
+    When I request GET "/api/settings?project=OTHER_PROJECT"
+    Then the response JSON settings "images" should be "accelerator"
+    And the response JSON settings "mediaDir" should be "public/img"
