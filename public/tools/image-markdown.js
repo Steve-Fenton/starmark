@@ -28,7 +28,7 @@ export default {
       getInitialDir: () => getMediaDir(),
       title: "Insert image",
       selectMode: "details",
-      dialogId: "media-dialog-insert",
+      dialogId: "media-dialog-insert-markdown",
       onOpen() {
         const caret = api.saveCaret();
         api.setPendingCaret(caret);

@@ -68,8 +68,7 @@ let editorHistoryIndex = -1;
 let editorHistoryDebounce = null;
 let isApplyingEditorHistory = false;
 const historyChangeListeners = [];
-let imageAcceleratorBtn = null;
-let imageMarkdownBtn = null;
+let imageToolMountContainer = null;
 
 const HISTORY_DEBOUNCE_MS = 400;
 const MAX_EDITOR_HISTORY = 100;
@@ -1614,7 +1613,7 @@ async function applyScanData(data) {
 
   if (projectChanged) {
     await loadSettings(data.projectPath);
-    syncImageToolVisibility();
+    await mountActiveImageTool();
   }
 }
 
@@ -3287,16 +3286,20 @@ function updateSettingsProjectContext() {
   settingsProjectLabel.textContent = `Settings for ${getProjectLabel(currentProjectPath)}`;
 }
 
-function syncImageToolVisibility() {
-  const mode = getImageMode();
-
-  if (imageAcceleratorBtn) {
-    imageAcceleratorBtn.hidden = mode !== "accelerator";
+async function mountActiveImageTool() {
+  if (!imageToolMountContainer) {
+    return;
   }
 
-  if (imageMarkdownBtn) {
-    imageMarkdownBtn.hidden = mode !== "markdown";
+  for (const dialog of document.querySelectorAll('[id^="media-dialog-insert"]')) {
+    dialog.remove();
   }
+
+  imageToolMountContainer.replaceChildren();
+
+  const toolId = getImageMode() === "markdown" ? "image-markdown" : "image-accelerator";
+  const module = await import(`/tools/${toolId}.js`);
+  module.default.mount(imageToolMountContainer, editorApi);
 }
 
 function showSettingsError(message) {
@@ -3537,16 +3540,10 @@ async function initToolbar() {
     }
 
     if (toolId === "image-accelerator" || toolId === "image-markdown") {
-      const slot = document.createElement("div");
-      slot.className = "toolbar-image-tool";
-      groupEl.append(slot);
-      tool.mount(slot, editorApi);
-
-      const button = slot.querySelector(".toolbar-btn");
-      if (toolId === "image-accelerator") {
-        imageAcceleratorBtn = button;
-      } else {
-        imageMarkdownBtn = button;
+      if (!imageToolMountContainer) {
+        imageToolMountContainer = document.createElement("div");
+        imageToolMountContainer.className = "toolbar-image-tool";
+        groupEl.append(imageToolMountContainer);
       }
       continue;
     }
@@ -3554,11 +3551,11 @@ async function initToolbar() {
     tool.mount(groupEl, editorApi);
   }
 
-  syncImageToolVisibility();
+  await mountActiveImageTool();
 }
 
 onSettingsChange(() => {
-  syncImageToolVisibility();
+  mountActiveImageTool();
 });
 
 initToolbar();
