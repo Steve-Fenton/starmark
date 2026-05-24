@@ -17,6 +17,70 @@ const VALUE_TYPES = [
   { value: "object", label: "Object" },
 ];
 
+const LONG_TEXT_THRESHOLD = 50;
+
+function createLongTextDialog() {
+  const dialog = document.createElement("dialog");
+  dialog.className = "frontmatter-text-dialog";
+  dialog.innerHTML = `
+    <div class="dialog-header">
+      <h2>Edit text</h2>
+      <button type="button" class="dialog-close frontmatter-text-dialog-close" aria-label="Close">&times;</button>
+    </div>
+    <form class="frontmatter-text-form">
+      <textarea class="frontmatter-text-textarea" rows="10" spellcheck="true" autocomplete="off"></textarea>
+      <div class="frontmatter-text-form-actions">
+        <button type="button" class="frontmatter-text-cancel">Cancel</button>
+        <button type="submit" class="primary">Done</button>
+      </div>
+    </form>
+  `;
+
+  const closeBtn = dialog.querySelector(".frontmatter-text-dialog-close");
+  const cancelBtn = dialog.querySelector(".frontmatter-text-cancel");
+  const form = dialog.querySelector(".frontmatter-text-form");
+  const textarea = dialog.querySelector(".frontmatter-text-textarea");
+  let onSave = null;
+
+  closeBtn.addEventListener("click", () => {
+    dialog.close();
+  });
+
+  cancelBtn.addEventListener("click", () => {
+    dialog.close();
+  });
+
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("close", () => {
+    onSave = null;
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    onSave?.(textarea.value);
+    dialog.close();
+  });
+
+  function open({ title, value, save }) {
+    dialog.querySelector(".dialog-header h2").textContent = title;
+    textarea.value = value;
+    onSave = save;
+    dialog.showModal();
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }
+
+  return { dialog, open };
+}
+
+const longTextDialog = createLongTextDialog();
+document.body.append(longTextDialog.dialog);
+
 function coerceScalar(type, rawValue) {
   switch (type) {
     case "boolean":
@@ -47,6 +111,21 @@ function isDateField(fieldPath) {
 
 function isIsoDateString(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+}
+
+function isLongTextField(type, fieldPath, stringValue) {
+  if (type !== "string") {
+    return false;
+  }
+
+  if (
+    isDateField(fieldPath) &&
+    (stringValue === "" || isIsoDateString(stringValue))
+  ) {
+    return false;
+  }
+
+  return stringValue.length > LONG_TEXT_THRESHOLD || stringValue.includes("\n");
 }
 
 export function createFrontmatterEditor(root, { onChange, getProjectPath } = {}) {
@@ -497,10 +576,40 @@ function renderScalarEditor(
 
   input.addEventListener("input", () => {
     parentContainer[parentKey] = coerceScalar(type, input.value);
+    updateLongTextButtonVisibility();
     onValueChange();
   });
 
   wrapper.appendChild(input);
+
+  const longTextBtn = document.createElement("button");
+  longTextBtn.type = "button";
+  longTextBtn.className = "frontmatter-long-text-btn";
+  longTextBtn.innerHTML = icons.edit;
+  longTextBtn.setAttribute("aria-label", "Edit in multiline editor");
+  longTextBtn.title = "Edit text";
+  longTextBtn.hidden = true;
+
+  function updateLongTextButtonVisibility() {
+    longTextBtn.hidden = !isLongTextField(type, fieldPath, input.value);
+  }
+
+  longTextBtn.addEventListener("click", () => {
+    const fieldLabel = fieldPath[fieldPath.length - 1] ?? "field";
+    longTextDialog.open({
+      title: `Edit ${fieldLabel}`,
+      value: input.value,
+      save(nextValue) {
+        input.value = nextValue;
+        parentContainer[parentKey] = nextValue;
+        updateLongTextButtonVisibility();
+        onValueChange();
+      },
+    });
+  });
+
+  updateLongTextButtonVisibility();
+  wrapper.appendChild(longTextBtn);
 
   if (
     type === "string" &&

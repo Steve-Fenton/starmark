@@ -10,9 +10,18 @@
     <header class="top-bar">
       <div class="top-bar-inner">
         <h1 class="top-bar-title">starmark</h1>
-        <button id="projects-menu-btn" type="button" class="top-bar-btn">
-          Projects
-        </button>
+        <div class="top-bar-actions">
+          <button id="projects-menu-btn" type="button" class="top-bar-btn">
+            Projects
+          </button>
+          <button
+            id="settings-menu-btn"
+            type="button"
+            class="top-bar-icon-btn"
+            aria-label="Settings"
+            title="Settings"
+          ></button>
+        </div>
       </div>
     </header>
 
@@ -43,6 +52,26 @@
         <h3 class="projects-heading">Remembered</h3>
         <ul id="project-list" class="project-list"></ul>
       </section>
+    </dialog>
+
+    <dialog id="settings-dialog" class="settings-dialog">
+      <div class="dialog-header">
+        <h2>Settings</h2>
+        <button id="settings-dialog-close" type="button" class="dialog-close" aria-label="Close">
+          &times;
+        </button>
+      </div>
+
+      <form id="settings-form" class="settings-form">
+        <div class="settings-field">
+          <label for="setting-images">Images</label>
+          <select id="setting-images" name="images">
+            <option value="accelerator">Accelerator</option>
+            <option value="markdown">Markdown</option>
+          </select>
+        </div>
+        <p id="settings-error" class="settings-error" hidden></p>
+      </form>
     </dialog>
 
     <main class="container">

@@ -1,13 +1,37 @@
-function stripQuotes(value) {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1).replace(/\\(['"])/g, "$1");
+function unescapeDoubleQuoted(value) {
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char === "\\" && index + 1 < value.length) {
+      const next = value[index + 1];
+      switch (next) {
+        case "n":
+          result += "\n";
+          index += 1;
+          break;
+        case "r":
+          result += "\r";
+          index += 1;
+          break;
+        case "t":
+          result += "\t";
+          index += 1;
+          break;
+        case "\\":
+        case '"':
+          result += next;
+          index += 1;
+          break;
+        default:
+          result += char;
+      }
+      continue;
+    }
+
+    result += char;
   }
 
-  return trimmed;
+  return result;
 }
 
 function parseScalar(raw) {
@@ -28,11 +52,12 @@ function parseScalar(raw) {
     return false;
   }
 
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return stripQuotes(value);
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return unescapeDoubleQuoted(value.slice(1, -1));
+  }
+
+  if (value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1).replace(/''/g, "'");
   }
 
   if (/^-?\d+(?:\.\d+)?$/.test(value)) {
@@ -390,11 +415,20 @@ function needsQuotes(value) {
     return true;
   }
 
+  if (/[\n\r\t]/.test(value)) {
+    return true;
+  }
+
   return false;
 }
 
 function quoteString(value) {
-  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
   return `"${escaped}"`;
 }
 

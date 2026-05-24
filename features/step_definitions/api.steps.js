@@ -17,6 +17,13 @@ When("I request GET {string}", async function (url) {
   this.lastResponse = await this.agent.get(url);
 });
 
+When("I request PUT {string} with JSON:", async function (url, docString) {
+  this.lastResponse = await this.agent
+    .put(url)
+    .set("Content-Type", "application/json")
+    .send(JSON.parse(docString));
+});
+
 When("I scan the sample project", async function () {
   this.lastResponse = await this.agent
     .post("/api/scan")
@@ -62,6 +69,12 @@ Then("the response JSON should include {string}", function (key) {
     Object.hasOwn(this.lastResponse.body, key),
     `Expected response JSON to include "${key}"`,
   );
+});
+
+Then('the response JSON settings {string} should be {string}', function (key, value) {
+  const settings = this.lastResponse.body.settings;
+  assert.ok(settings, "Expected response JSON to include settings");
+  assert.equal(settings[key], value, `Expected settings.${key} to be "${value}"`);
 });
 
 Then('the response JSON {string} should include {string}', function (key, value) {

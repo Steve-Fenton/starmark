@@ -84,6 +84,37 @@ body::before {
   font-size: 0.9rem;
 }
 
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.top-bar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.top-bar-icon-btn:hover:not(:disabled) {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.top-bar-icon-btn svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 .container {
   width: 90%;
   max-width: 1200px;
@@ -104,6 +135,52 @@ body::before {
 
 .projects-dialog::backdrop {
   background: rgb(0 0 0 / 55%);
+}
+
+.settings-dialog {
+  width: min(420px, calc(100vw - 2rem));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.settings-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.settings-form {
+  margin: 0.75rem 1.25rem 1.25rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.settings-field label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.settings-field select {
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-error {
+  margin: 0;
+  color: #ff8b8b;
+  font-size: 0.85rem;
+}
+
+.settings-error[hidden] {
+  display: none;
 }
 
 .dialog-header {
@@ -933,6 +1010,82 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 .frontmatter-media-btn svg {
   display: block;
   flex-shrink: 0;
+}
+
+.frontmatter-long-text-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2.15rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.frontmatter-long-text-btn:hover:not(:disabled) {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.frontmatter-long-text-btn svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.frontmatter-long-text-btn[hidden] {
+  display: none;
+}
+
+.frontmatter-text-dialog {
+  width: min(560px, calc(100vw - 2rem));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.frontmatter-text-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.frontmatter-text-form {
+  margin: 0.75rem 1.25rem 1.25rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.frontmatter-text-textarea {
+  display: block;
+  width: 100%;
+  min-height: 12rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.frontmatter-text-textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.frontmatter-text-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .frontmatter-boolean-label {

@@ -1,6 +1,11 @@
 import { icons } from "./icons.js";
 import { createFrontmatterEditor } from "./frontmatter-editor.js";
 import { normalizeFrontmatter, prepareImportedFrontmatter } from "./frontmatter.js";
+import {
+  prepareMarkdownBodyForEditor,
+  prepareMarkdownBodyForSource,
+} from "./markdown-html.js";
+import { getImageMode, getSettings, loadSettings, saveSettings } from "./settings.js";
 
 const folderInput = document.getElementById("folder-path");
 const browseBtn = document.getElementById("browse-btn");
@@ -36,6 +41,12 @@ const projectList = document.getElementById("project-list");
 const projectsMenuBtn = document.getElementById("projects-menu-btn");
 const projectsDialog = document.getElementById("projects-dialog");
 const projectsDialogClose = document.getElementById("projects-dialog-close");
+const settingsMenuBtn = document.getElementById("settings-menu-btn");
+const settingsDialog = document.getElementById("settings-dialog");
+const settingsDialogClose = document.getElementById("settings-dialog-close");
+const settingsForm = document.getElementById("settings-form");
+const settingImagesSelect = document.getElementById("setting-images");
+const settingsError = document.getElementById("settings-error");
 const topBar = document.querySelector(".top-bar");
 
 let projectButtons = [];
@@ -1752,7 +1763,7 @@ async function saveCurrentFile() {
   setSaveButtonState({ label: "Saving…", disabled: true });
 
   const writeEditorContent = async () => {
-    const body = getEditorContent();
+    const body = prepareMarkdownBodyForSource(getEditorContent());
     const content = buildFileContent(currentEditFrontmatter, body);
     const response = await fetch("/api/file", {
       method: "POST",
@@ -1780,7 +1791,7 @@ async function saveCurrentFile() {
     }
 
     const latestBody = getEditorContent();
-    if (latestBody !== body) {
+    if (prepareMarkdownBodyForSource(latestBody) !== body) {
       ({ body, content, response, data } = await writeEditorContent());
       if (!response.ok) {
         setSaveButtonState({
@@ -1807,8 +1818,9 @@ async function saveCurrentFile() {
       updateFileResults();
     }
 
-    renderMarkdownEditor(savedBody);
-    resetEditorHistory(savedBody);
+    const editorBody = prepareMarkdownBodyForEditor(savedBody);
+    renderMarkdownEditor(editorBody);
+    resetEditorHistory(editorBody);
     setSaveButtonState({ label: "Saved", disabled: false });
     resetSaveButtonSoon();
   } catch {
@@ -1870,8 +1882,9 @@ async function openEditView(file) {
     currentEditFrontmatter = data.frontmatter ?? null;
     updateEditHeader(file, currentEditFrontmatter);
     updateFrontmatterPanel(currentEditFrontmatter);
-    renderMarkdownEditor(data.content);
-    resetEditorHistory(data.content);
+    const editorBody = prepareMarkdownBodyForEditor(data.content);
+    renderMarkdownEditor(editorBody);
+    resetEditorHistory(editorBody);
     setSaveButtonState({ disabled: false });
   } catch {
     if (currentEditFile?.absolutePath === file.absolutePath) {
@@ -3234,6 +3247,53 @@ projectsDialog.addEventListener("click", (event) => {
   }
 });
 
+settingsMenuBtn.innerHTML = icons.settings;
+
+function syncSettingsForm(settings) {
+  settingImagesSelect.value = settings.images;
+}
+
+function showSettingsError(message) {
+  settingsError.textContent = message;
+  settingsError.hidden = false;
+}
+
+function clearSettingsError() {
+  settingsError.textContent = "";
+  settingsError.hidden = true;
+}
+
+settingsMenuBtn.addEventListener("click", () => {
+  syncSettingsForm(getSettings());
+  clearSettingsError();
+  settingsDialog.showModal();
+});
+
+settingsDialogClose.addEventListener("click", () => {
+  settingsDialog.close();
+});
+
+settingsDialog.addEventListener("click", (event) => {
+  if (event.target === settingsDialog) {
+    settingsDialog.close();
+  }
+});
+
+settingImagesSelect.addEventListener("change", async () => {
+  clearSettingsError();
+
+  try {
+    await saveSettings({ images: settingImagesSelect.value });
+  } catch {
+    syncSettingsForm(getSettings());
+    showSettingsError("Could not save settings.");
+  }
+});
+
+settingsForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+});
+
 const imageLightbox = createImageLightbox();
 
 function createImageLightbox() {
@@ -3382,11 +3442,20 @@ const editorApi = {
 async function initToolbar() {
   const response = await fetch("/api/tools");
   const { tools } = await response.json();
+  const activeImageTool =
+    getImageMode() === "markdown" ? "image-markdown" : "image-accelerator";
 
   let currentGroup = null;
   let groupEl = null;
 
   for (const toolId of tools) {
+    if (
+      (toolId === "image-accelerator" || toolId === "image-markdown") &&
+      toolId !== activeImageTool
+    ) {
+      continue;
+    }
+
     const module = await import(`/tools/${toolId}.js`);
     const tool = module.default;
 
@@ -3409,7 +3478,9 @@ async function initToolbar() {
   }
 }
 
-initToolbar();
+loadSettings().then(() => {
+  initToolbar();
+});
 
 syncTopBarHeight();
 window.addEventListener("resize", syncTopBarHeight);

@@ -5,6 +5,12 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { buildInitialFileContent } from "./content-config.js";
+import {
+  readUserConfig,
+  saveProjects,
+  saveSettings,
+  normalizeSettings,
+} from "./user-config.js";
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -13,10 +19,6 @@ const PUBLIC_DIR = path.join(PACKAGE_ROOT, "public");
 
 const app = express();
 const PORT = process.env.PORT || 5748;
-
-function getUserIniPath() {
-  return path.join(process.cwd(), ".starmark", "user.ini");
-}
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -324,38 +326,8 @@ async function readFileNavOrder(filePath) {
 }
 
 async function readSavedProjects() {
-  try {
-    const contents = await fs.readFile(getUserIniPath(), "utf8");
-    const paths = [];
-
-    for (const line of contents.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("[")) continue;
-
-      const match = trimmed.match(/^(?:path|folder)=(.+)$/);
-      if (match) paths.push(match[1].trim());
-    }
-
-    const seen = new Set();
-    const projects = [];
-
-    for (const projectPath of paths) {
-      const resolved = path.resolve(projectPath);
-      if (seen.has(resolved)) continue;
-      seen.add(resolved);
-
-      if (!(await isDirectory(resolved))) continue;
-
-      projects.push({
-        path: resolved,
-        name: path.basename(resolved),
-      });
-    }
-
-    return projects;
-  } catch {
-    return [];
-  }
+  const { projects } = await readUserConfig();
+  return projects;
 }
 
 async function saveProject(folderPath) {
@@ -369,11 +341,7 @@ async function saveProject(folderPath) {
     name: path.basename(resolved),
   });
 
-  const lines = ["[projects]", ...projects.map((project) => `path=${project.path}`)];
-
-  const userIniPath = getUserIniPath();
-  await fs.mkdir(path.dirname(userIniPath), { recursive: true });
-  await fs.writeFile(userIniPath, `${lines.join("\n")}\n`, "utf8");
+  await saveProjects(projects);
 }
 
 app.get("/api/config", (_req, res) => {
@@ -385,6 +353,23 @@ app.get("/api/config", (_req, res) => {
 app.get("/api/projects", async (_req, res) => {
   const projects = await readSavedProjects();
   res.json({ projects });
+});
+
+app.get("/api/settings", async (_req, res) => {
+  const { settings } = await readUserConfig();
+  res.json({ settings });
+});
+
+app.put("/api/settings", async (req, res) => {
+  const { settings } = req.body ?? {};
+
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return res.status(400).json({ error: "A settings object is required" });
+  }
+
+  const normalized = normalizeSettings(settings);
+  await saveSettings(normalized);
+  res.json({ settings: normalized });
 });
 
 app.post("/api/browse", async (_req, res) => {
