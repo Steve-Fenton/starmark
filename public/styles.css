@@ -481,7 +481,7 @@ button:disabled {
   --tree-badge-width: 8rem;
 }
 
-.file-tree > .tree-folder > details > summary {
+.file-tree > .tree-folder:first-child > details > summary {
   border-top: none;
 }
 
