@@ -73,10 +73,24 @@ body::before {
 }
 
 .top-bar-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
   letter-spacing: -0.03em;
+  color: var(--accent);
+}
+
+.top-bar-title-icon {
+  display: inline-flex;
+}
+
+.top-bar-title-icon svg {
+  display: block;
+  width: 1.15rem;
+  height: 1.15rem;
 }
 
 .top-bar-btn {
@@ -256,15 +270,27 @@ body::before {
   border-top: 1px solid var(--border);
 }
 
+.project-row {
+  display: flex;
+  align-items: stretch;
+}
+
 .project-item {
   display: grid;
   gap: 0.2rem;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 0.85rem 1rem;
   border: none;
   border-radius: 0;
   background: var(--surface);
   text-align: left;
+}
+
+.project-delete-btn {
+  flex-shrink: 0;
+  align-self: center;
+  margin-right: 0.65rem;
 }
 
 .project-item:hover:not(:disabled) {

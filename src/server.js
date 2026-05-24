@@ -8,6 +8,7 @@ import { buildInitialFileContent } from "./content-config.js";
 import {
   readProjectSettings,
   readUserConfig,
+  removeProject,
   saveProjects,
   saveProjectSettings,
   normalizeSettings,
@@ -352,6 +353,18 @@ app.get("/api/config", (_req, res) => {
 });
 
 app.get("/api/projects", async (_req, res) => {
+  const projects = await readSavedProjects();
+  res.json({ projects });
+});
+
+app.delete("/api/projects", async (req, res) => {
+  const { path: projectPath } = req.body ?? {};
+
+  if (!projectPath || typeof projectPath !== "string") {
+    return res.status(400).json({ error: "A project path is required" });
+  }
+
+  await removeProject(projectPath);
   const projects = await readSavedProjects();
   res.json({ projects });
 });

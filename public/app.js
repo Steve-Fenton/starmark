@@ -50,6 +50,7 @@ const settingMediaDirInput = document.getElementById("setting-media-dir");
 const settingsProjectLabel = document.getElementById("settings-project");
 const settingsError = document.getElementById("settings-error");
 const topBar = document.querySelector(".top-bar");
+const topBarTitleIcon = document.getElementById("top-bar-title-icon");
 
 let projectButtons = [];
 let scannedFiles = [];
@@ -1648,7 +1649,11 @@ function getFileFromUrl() {
 
 function setProjectInUrl(projectPath) {
   const url = new URL(window.location.href);
-  url.searchParams.set("project", projectPath);
+  if (projectPath) {
+    url.searchParams.set("project", projectPath);
+  } else {
+    url.searchParams.delete("project");
+  }
   window.history.replaceState({}, "", url);
 }
 
@@ -1948,6 +1953,8 @@ function renderProjects(projects) {
 
   for (const project of projects) {
     const item = document.createElement("li");
+    item.className = "project-row";
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "project-item";
@@ -1967,9 +1974,72 @@ function renderProjects(projects) {
       scanFolder(project.path);
     });
 
-    projectButtons.push(button);
-    item.append(button);
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "tree-action-btn delete-btn project-delete-btn";
+    deleteBtn.innerHTML = icons.trash;
+    deleteBtn.title = `Remove ${project.name} from remembered projects`;
+    deleteBtn.setAttribute(
+      "aria-label",
+      `Remove ${project.name} from remembered projects`,
+    );
+    deleteBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      removeRememberedProject(project);
+    });
+
+    projectButtons.push(button, deleteBtn);
+    item.append(button, deleteBtn);
     projectList.append(item);
+  }
+}
+
+function clearCurrentProject() {
+  currentProjectPath = "";
+  folderInput.value = "";
+  scannedFiles = [];
+  scannedDirectories = [];
+  lastScanTargets = [];
+  fileSearch.value = "";
+  searchBox.hidden = true;
+  fileList.hidden = true;
+  collapseAllBtn.hidden = true;
+  scanInfo.hidden = true;
+  emptyState.hidden = false;
+  emptyState.textContent =
+    "Open Projects to choose a folder and scan for .md and .mdx files.";
+  showListView();
+  setProjectInUrl("");
+  updateSettingsProjectContext();
+}
+
+async function removeRememberedProject(project) {
+  setBusy(true);
+  clearError();
+
+  try {
+    const response = await fetch("/api/projects", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: project.path }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      showError(data.error ?? "Could not remove project");
+      return;
+    }
+
+    renderProjects(data.projects ?? []);
+
+    if (currentProjectPath === project.path) {
+      clearCurrentProject();
+    }
+  } catch {
+    showError("Could not remove project");
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -3250,6 +3320,9 @@ folderInput.addEventListener("keydown", (event) => {
     scanFolder();
   }
 });
+
+projectsMenuBtn.innerHTML = icons.switch;
+topBarTitleIcon.innerHTML = icons.star;
 
 projectsMenuBtn.addEventListener("click", () => {
   projectsDialog.showModal();

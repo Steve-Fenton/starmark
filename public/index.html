@@ -9,11 +9,18 @@
   <body>
     <header class="top-bar">
       <div class="top-bar-inner">
-        <h1 class="top-bar-title">starmark</h1>
+        <h1 class="top-bar-title">
+          <span id="top-bar-title-icon" class="top-bar-title-icon" aria-hidden="true"></span>
+          starmark
+        </h1>
         <div class="top-bar-actions">
-          <button id="projects-menu-btn" type="button" class="top-bar-btn">
-            Projects
-          </button>
+          <button
+            id="projects-menu-btn"
+            type="button"
+            class="top-bar-icon-btn"
+            aria-label="Switch project"
+            title="Switch project"
+          ></button>
           <button
             id="settings-menu-btn"
             type="button"

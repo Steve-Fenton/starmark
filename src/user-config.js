@@ -235,6 +235,17 @@ export async function saveProjects(projects, cwd = process.cwd()) {
   await writeUserConfig({ ...config, projects }, cwd);
 }
 
+export async function removeProject(projectPath, cwd = process.cwd()) {
+  const config = await readUserConfig(cwd);
+  const projectKey = resolveProjectKey(projectPath);
+  const projects = config.projects.filter(
+    (project) => resolveProjectKey(project.path) !== projectKey,
+  );
+
+  delete config.projectSettings[projectKey];
+  await writeUserConfig({ ...config, projects }, cwd);
+}
+
 export async function saveProjectSettings(projectPath, settings, cwd = process.cwd()) {
   const config = await readUserConfig(cwd);
   const projectKey = resolveProjectKey(projectPath);
