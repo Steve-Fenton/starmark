@@ -110,6 +110,12 @@ Then('the response JSON {string} should include {string}', function (key, value)
   assert.ok(actual.includes(value), `Expected ${key} to include "${value}"`);
 });
 
+Then('the response JSON {string} should not include {string}', function (key, value) {
+  const actual = this.lastResponse.body[key];
+  assert.ok(Array.isArray(actual), `Expected "${key}" to be an array`);
+  assert.ok(!actual.includes(value), `Expected ${key} not to include "${value}"`);
+});
+
 Then("the scan should find at least {int} markdown files", function (count) {
   assert.ok(
     this.scannedFiles.length >= count,

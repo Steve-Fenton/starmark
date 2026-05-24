@@ -72,6 +72,7 @@ let editorHistoryDebounce = null;
 let isApplyingEditorHistory = false;
 const historyChangeListeners = [];
 let imageToolMountContainer = null;
+let imageToolMountVersion = 0;
 
 const HISTORY_DEBOUNCE_MS = 400;
 const MAX_EDITOR_HISTORY = 100;
@@ -1639,7 +1640,6 @@ async function applyScanData(data) {
 
   if (projectChanged) {
     await loadSettings(data.projectPath);
-    await mountActiveImageTool();
   }
 }
 
@@ -3390,6 +3390,8 @@ async function mountActiveImageTool() {
     return;
   }
 
+  const mountVersion = ++imageToolMountVersion;
+
   for (const dialog of document.querySelectorAll('[id^="media-dialog-insert"]')) {
     dialog.remove();
   }
@@ -3398,6 +3400,11 @@ async function mountActiveImageTool() {
 
   const toolId = getImageMode() === "markdown" ? "image-markdown" : "image-accelerator";
   const module = await import(`/tools/${toolId}.js`);
+
+  if (mountVersion !== imageToolMountVersion) {
+    return;
+  }
+
   module.default.mount(imageToolMountContainer, editorApi);
 }
 
@@ -3618,6 +3625,7 @@ async function initToolbar() {
 
   let currentGroup = null;
   let groupEl = null;
+  let insertGroupEl = null;
 
   for (const toolId of tools) {
     const module = await import(`/tools/${toolId}.js`);
@@ -3636,18 +3644,19 @@ async function initToolbar() {
       groupEl = document.createElement("div");
       groupEl.className = "toolbar-group";
       editToolbar.append(groupEl);
-    }
 
-    if (toolId === "image-accelerator" || toolId === "image-markdown") {
-      if (!imageToolMountContainer) {
-        imageToolMountContainer = document.createElement("div");
-        imageToolMountContainer.className = "toolbar-image-tool";
-        groupEl.append(imageToolMountContainer);
+      if (tool.group === "insert") {
+        insertGroupEl = groupEl;
       }
-      continue;
     }
 
     tool.mount(groupEl, editorApi);
+  }
+
+  if (insertGroupEl && !imageToolMountContainer) {
+    imageToolMountContainer = document.createElement("div");
+    imageToolMountContainer.className = "toolbar-image-tool";
+    insertGroupEl.append(imageToolMountContainer);
   }
 
   await mountActiveImageTool();

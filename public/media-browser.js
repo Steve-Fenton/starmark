@@ -54,6 +54,28 @@ export function createMediaDialog({
       <p class="media-status" hidden></p>
       <div class="media-grid"></div>
     </div>
+    <dialog class="media-add-folder-dialog">
+      <form class="media-add-folder-form">
+        <div class="dialog-header">
+          <h2>add folder</h2>
+          <button type="button" class="dialog-close media-add-folder-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="link-field">
+          <label for="${dialogId}-folder-name">Folder name</label>
+          <input
+            id="${dialogId}-folder-name"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+        </div>
+        <div class="link-form-actions">
+          <button type="button" class="media-add-folder-cancel">Cancel</button>
+          <button type="submit" class="primary">Create</button>
+        </div>
+      </form>
+    </dialog>
     <form class="image-form" hidden aria-hidden="true">
       <p class="image-selected-name"></p>
       <div class="link-field">
@@ -90,9 +112,15 @@ export function createMediaDialog({
   const imageLazyInput = dialog.querySelector(`#${dialogId}-image-lazy`);
   const imageCaptionInput = dialog.querySelector(`#${dialogId}-image-caption`);
   const imageBackBtn = dialog.querySelector(".image-back-btn");
+  const addFolderDialog = dialog.querySelector(".media-add-folder-dialog");
+  const addFolderForm = dialog.querySelector(".media-add-folder-form");
+  const addFolderNameInput = dialog.querySelector(`#${dialogId}-folder-name`);
+  const addFolderCloseBtn = dialog.querySelector(".media-add-folder-close");
+  const addFolderCancelBtn = dialog.querySelector(".media-add-folder-cancel");
 
   let currentMediaDir = getInitialDir();
   let isMediaUploading = false;
+  let isMediaCreatingFolder = false;
 
   function formatMediaDirLabel(relativeDir) {
     return relativeDir ? relativeDir.replace(/\//g, " / ") : "public";
@@ -149,10 +177,10 @@ export function createMediaDialog({
 
     const name = document.createElement("span");
     name.className = "media-item-name";
-    name.textContent = "Add";
+    name.textContent = "upload image";
 
     label.append(input, preview, name);
-    label.title = "Upload image";
+    label.title = "upload image";
 
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
@@ -201,6 +229,67 @@ export function createMediaDialog({
     });
 
     return label;
+  }
+
+  function openAddFolderDialog() {
+    addFolderForm.reset();
+    addFolderDialog.showModal();
+    addFolderNameInput.focus();
+  }
+
+  function createMediaAddFolderItem() {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "media-item-btn media-add-btn media-add-folder-btn";
+    button.disabled = isMediaCreatingFolder;
+
+    const preview = document.createElement("span");
+    preview.className = "media-item-preview media-add-preview";
+    preview.innerHTML = icons.folder;
+    preview.setAttribute("aria-hidden", "true");
+
+    const name = document.createElement("span");
+    name.className = "media-item-name";
+    name.textContent = "add folder";
+
+    button.append(preview, name);
+    button.title = "add folder";
+    button.addEventListener("click", () => {
+      openAddFolderDialog();
+    });
+
+    return button;
+  }
+
+  async function createMediaFolder(folderName) {
+    isMediaCreatingFolder = true;
+    setMediaStatus("Creating folder…");
+
+    try {
+      const params = new URLSearchParams({
+        project: getProjectPath(),
+        dir: currentMediaDir,
+        name: folderName,
+      });
+      const response = await fetch(`/api/media/folder?${params.toString()}`, {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMediaStatus(data.error ?? "Could not create folder", { isError: true });
+        return false;
+      }
+
+      addFolderDialog.close();
+      await loadMediaDirectory(currentMediaDir);
+      return true;
+    } catch {
+      setMediaStatus("Could not create folder", { isError: true });
+      return false;
+    } finally {
+      isMediaCreatingFolder = false;
+    }
   }
 
   function setMediaStatus(message, { isError = false } = {}) {
@@ -308,7 +397,7 @@ export function createMediaDialog({
         mediaGrid.append(button);
       }
 
-      mediaGrid.append(createMediaAddItem());
+      mediaGrid.append(createMediaAddFolderItem(), createMediaAddItem());
     }
 
     for (const image of data.images) {
@@ -441,6 +530,32 @@ export function createMediaDialog({
 
   imageBackBtn.addEventListener("click", () => {
     showMediaBrowserView();
+  });
+
+  addFolderCloseBtn.addEventListener("click", () => {
+    addFolderDialog.close();
+  });
+
+  addFolderCancelBtn.addEventListener("click", () => {
+    addFolderDialog.close();
+  });
+
+  addFolderDialog.addEventListener("click", (event) => {
+    if (event.target === addFolderDialog) {
+      addFolderDialog.close();
+    }
+  });
+
+  addFolderForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const folderName = addFolderNameInput.value.trim();
+
+    if (!folderName) {
+      setMediaStatus("A folder name is required", { isError: true });
+      return;
+    }
+
+    await createMediaFolder(folderName);
   });
 
   mediaSearchInput.addEventListener("input", () => {

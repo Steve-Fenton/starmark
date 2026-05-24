@@ -47,6 +47,7 @@ async function listToolbarTools() {
   return entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".js"))
     .map((entry) => entry.name.replace(/\.js$/, ""))
+    .filter((toolId) => !toolId.startsWith("image-"))
     .sort((a, b) => a.localeCompare(b));
 }
 
@@ -946,6 +947,74 @@ async function getUniqueImageFilename(dirPath, filename) {
     }
   }
 }
+
+app.post("/api/media/folder", async (req, res) => {
+  const { project: projectPath, dir = "img", name } = req.query;
+
+  if (!projectPath || typeof projectPath !== "string") {
+    return res.status(400).json({ error: "A project path is required" });
+  }
+
+  const nameResult = validateEntryName(name);
+  if (nameResult.error) {
+    return res.status(400).json({ error: nameResult.error });
+  }
+
+  const resolvedProject = path.resolve(projectPath);
+
+  try {
+    const stat = await fs.stat(resolvedProject);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: "Project path is not a directory" });
+    }
+  } catch {
+    return res.status(404).json({ error: "Project does not exist or is not accessible" });
+  }
+
+  const relativeDir = typeof dir === "string" ? dir : "img";
+  const resolved = resolvePublicSubpath(resolvedProject, relativeDir);
+  if (!resolved) {
+    return res.status(400).json({ error: "Invalid media path" });
+  }
+
+  const { publicDir, target, relativePath: currentDir } = resolved;
+
+  if (!(await isDirectory(publicDir))) {
+    return res.status(400).json({ error: "This project has no public folder" });
+  }
+
+  if (!(await isDirectory(target))) {
+    return res.status(400).json({ error: "Folder does not exist" });
+  }
+
+  const folderRelativePath = currentDir
+    ? path.posix.join(currentDir, nameResult.name)
+    : nameResult.name;
+  const folderResolved = resolvePublicSubpath(resolvedProject, folderRelativePath);
+  if (!folderResolved) {
+    return res.status(400).json({ error: "Invalid folder path" });
+  }
+
+  try {
+    const stat = await fs.stat(folderResolved.target);
+    if (stat.isDirectory()) {
+      return res.status(409).json({ error: "A folder with that name already exists" });
+    }
+    return res.status(409).json({ error: "A file with that name already exists" });
+  } catch {
+    // Target does not exist yet.
+  }
+
+  try {
+    await fs.mkdir(folderResolved.target, { recursive: false });
+    res.json({
+      name: nameResult.name,
+      dir: folderRelativePath,
+    });
+  } catch {
+    res.status(500).json({ error: "Could not create folder" });
+  }
+});
 
 app.post(
   "/api/media/upload",

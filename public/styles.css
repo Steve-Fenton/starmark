@@ -1900,9 +1900,36 @@ button.destructive:hover:not(:disabled) {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-.media-add-btn:has(.media-upload-input:disabled) {
+.media-add-folder-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.media-add-btn:has(.media-upload-input:disabled),
+.media-add-folder-btn:disabled {
   opacity: 0.6;
   cursor: wait;
+}
+
+.media-add-folder-dialog {
+  width: min(24rem, calc(100vw - 2rem));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.media-add-folder-dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+
+.media-add-folder-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.1rem 1.1rem;
 }
 
 .media-item-name {
