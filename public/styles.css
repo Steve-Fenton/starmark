@@ -1311,7 +1311,8 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 }
 
 .markdown-editor > .is-colon-block-start,
-.markdown-editor > .is-colon-block-end {
+.markdown-editor > .is-colon-block-end,
+.markdown-editor > .is-colon-block-content {
   color: var(--colon-color);
   padding-left: 0.65rem;
   border-left: var(--colon-border-width, 3px) solid var(--colon-accent);
@@ -1331,7 +1332,8 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 }
 
 .markdown-editor > .is-colon-block-start.colon-depth-3,
-.markdown-editor > .is-colon-block-end.colon-depth-3 {
+.markdown-editor > .is-colon-block-end.colon-depth-3,
+.markdown-editor > .is-colon-block-content.colon-depth-3 {
   --colon-color: #79aef0;
   --colon-accent: #4d86dc;
   --colon-border-width: 3px;
@@ -1339,7 +1341,8 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 }
 
 .markdown-editor > .is-colon-block-start.colon-depth-4,
-.markdown-editor > .is-colon-block-end.colon-depth-4 {
+.markdown-editor > .is-colon-block-end.colon-depth-4,
+.markdown-editor > .is-colon-block-content.colon-depth-4 {
   --colon-color: #b8d8ff;
   --colon-accent: #79b4ff;
   --colon-border-width: 4px;
@@ -1347,7 +1350,8 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 }
 
 .markdown-editor > .is-colon-block-start.colon-depth-5,
-.markdown-editor > .is-colon-block-end.colon-depth-5 {
+.markdown-editor > .is-colon-block-end.colon-depth-5,
+.markdown-editor > .is-colon-block-content.colon-depth-5 {
   --colon-color: #d2e8ff;
   --colon-accent: #96c8ff;
   --colon-border-width: 5px;
@@ -1355,7 +1359,8 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 }
 
 .markdown-editor > .is-colon-block-start.colon-depth-6,
-.markdown-editor > .is-colon-block-end.colon-depth-6 {
+.markdown-editor > .is-colon-block-end.colon-depth-6,
+.markdown-editor > .is-colon-block-content.colon-depth-6 {
   --colon-color: #edf5ff;
   --colon-accent: #b8daff;
   --colon-border-width: 6px;

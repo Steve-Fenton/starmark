@@ -98,6 +98,7 @@ const LINE_DECORATION_CLASSES = [
   "is-list",
   "is-colon-block-start",
   "is-colon-block-end",
+  "is-colon-block-content",
   "is-colon-inline",
   ...COLON_DEPTH_CLASSES,
 ];
@@ -137,7 +138,7 @@ function getColonLineStates(lines, codeBlockStates) {
     states.push({
       inColonBlock: blockStack.length > 0,
       colonRole: null,
-      colonDepth: 0,
+      colonDepth: blockStack.length > 0 ? blockStack[blockStack.length - 1] : 0,
     });
   }
 
@@ -156,7 +157,7 @@ function getColonLineStates(lines, codeBlockStates) {
       states.push({
         inColonBlock: blockStack.length > 0,
         colonRole: null,
-        colonDepth: 0,
+        colonDepth: blockStack.length > 0 ? blockStack[blockStack.length - 1] : 0,
       });
       continue;
     }
@@ -668,10 +669,14 @@ function applyLineDecorations(element, lineState) {
   element.classList.toggle("is-list", lineState.isList);
   element.classList.toggle("is-colon-block-start", lineState.colonRole === "block-start");
   element.classList.toggle("is-colon-block-end", lineState.colonRole === "block-end");
+  element.classList.toggle(
+    "is-colon-block-content",
+    lineState.inColonBlock && lineState.colonRole === null,
+  );
   element.classList.toggle("is-colon-inline", lineState.colonRole === "inline");
 
   const depthClass =
-    lineState.colonRole && lineState.colonDepth > 0
+    lineState.colonDepth > 0
       ? `colon-depth-${Math.min(lineState.colonDepth, COLON_DEPTH_CLASSES.length)}`
       : null;
 
@@ -839,9 +844,11 @@ function lineDecorationsMatch(element, lineState) {
       (className === "is-list" && lineState.isList) ||
       (className === "is-colon-block-start" && lineState.colonRole === "block-start") ||
       (className === "is-colon-block-end" && lineState.colonRole === "block-end") ||
+      (className === "is-colon-block-content" &&
+        lineState.inColonBlock &&
+        lineState.colonRole === null) ||
       (className === "is-colon-inline" && lineState.colonRole === "inline") ||
-      (lineState.colonRole &&
-        lineState.colonDepth > 0 &&
+      (lineState.colonDepth > 0 &&
         className ===
           `colon-depth-${Math.min(lineState.colonDepth, COLON_DEPTH_CLASSES.length)}`);
 
