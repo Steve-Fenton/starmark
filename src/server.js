@@ -930,6 +930,26 @@ app.get("/api/media", async (req, res) => {
   });
 });
 
+function sanitizeWebSafeFilename(filename) {
+  const basename = path.basename(String(filename).replace(/\\/g, "/"));
+  const ext = path.extname(basename).toLowerCase();
+  const base = path.basename(basename, path.extname(basename));
+
+  let safeBase = base
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9._-]+/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  if (!safeBase) {
+    safeBase = "image";
+  }
+
+  return `${safeBase}${ext}`;
+}
+
 async function getUniqueImageFilename(dirPath, filename) {
   const sanitized = path.basename(filename.replace(/\\/g, "/"));
   const ext = path.extname(sanitized).toLowerCase();
@@ -1030,7 +1050,7 @@ app.post(
       return res.status(400).json({ error: "A filename is required" });
     }
 
-    const sanitizedFilename = path.basename(filename.replace(/\\/g, "/"));
+    const sanitizedFilename = sanitizeWebSafeFilename(filename);
     const ext = path.extname(sanitizedFilename).toLowerCase();
     if (!IMAGE_EXTENSIONS.has(ext)) {
       return res.status(400).json({ error: "Only image files are supported" });
