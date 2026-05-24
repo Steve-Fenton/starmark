@@ -51,6 +51,8 @@ const settingsProjectLabel = document.getElementById("settings-project");
 const settingsError = document.getElementById("settings-error");
 const topBar = document.querySelector(".top-bar");
 const topBarTitleIcon = document.getElementById("top-bar-title-icon");
+const topBarSeparator = document.getElementById("top-bar-separator");
+const topBarProject = document.getElementById("top-bar-project");
 
 let projectButtons = [];
 let scannedFiles = [];
@@ -1591,6 +1593,21 @@ function getProjectLabel(projectPath) {
   return segments.at(-1) ?? projectPath;
 }
 
+function updateTopBarProject() {
+  const hasProject = Boolean(currentProjectPath);
+  topBarSeparator.hidden = !hasProject;
+  topBarProject.hidden = !hasProject;
+
+  if (!hasProject) {
+    topBarProject.textContent = "";
+    topBarProject.removeAttribute("title");
+    return;
+  }
+
+  topBarProject.textContent = getProjectLabel(currentProjectPath);
+  topBarProject.title = currentProjectPath;
+}
+
 async function applyScanData(data) {
   const projectChanged = currentProjectPath !== data.projectPath;
   folderInput.value = data.projectPath;
@@ -1611,6 +1628,7 @@ async function applyScanData(data) {
     lastScanTargets.length === 0;
 
   updateFileResults();
+  updateTopBarProject();
 
   if (projectChanged) {
     await loadSettings(data.projectPath);
@@ -2011,6 +2029,7 @@ function clearCurrentProject() {
     "Open Projects to choose a folder and scan for .md and .mdx files.";
   showListView();
   setProjectInUrl("");
+  updateTopBarProject();
   updateSettingsProjectContext();
 }
 
