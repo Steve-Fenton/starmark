@@ -6,6 +6,7 @@ import {
   prepareMarkdownBodyForSource,
 } from "./markdown-html.js";
 import { getImageMode, getSettings, loadSettings, onSettingsChange, saveSettings } from "./settings.js";
+import { resolveImageToolId } from "./toolbar-image-tool.js";
 
 const folderInput = document.getElementById("folder-path");
 const browseBtn = document.getElementById("browse-btn");
@@ -3398,7 +3399,7 @@ async function mountActiveImageTool() {
 
   imageToolMountContainer.replaceChildren();
 
-  const toolId = getImageMode() === "markdown" ? "image-markdown" : "image-accelerator";
+  const toolId = resolveImageToolId(getImageMode());
   const module = await import(`/tools/${toolId}.js`);
 
   if (mountVersion !== imageToolMountVersion) {
