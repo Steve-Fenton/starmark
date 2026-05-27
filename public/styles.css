@@ -1505,7 +1505,7 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 }
 
 .new-item-dialog {
-  width: min(420px, calc(100vw - 2rem));
+  width: min(460px, calc(100vw - 2rem));
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1554,21 +1554,104 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 
 .new-item-frontmatter {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.75rem;
+}
+
+.new-item-frontmatter-callout {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.new-item-frontmatter-callout.is-set {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.new-item-frontmatter-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.new-item-frontmatter-description {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text);
 }
 
 .new-item-import-frontmatter {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.new-item-import-frontmatter:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.new-item-frontmatter-callout.is-set .new-item-import-frontmatter {
+  width: auto;
   justify-self: start;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.88rem;
+  font-weight: 500;
 }
 
 .new-item-frontmatter-source {
   margin: 0;
-  font-size: 0.85rem;
-  color: var(--muted);
+  font-size: 0.88rem;
+  color: var(--accent);
 }
 
 .new-item-frontmatter-source[hidden] {
   display: none;
+}
+
+.new-item-frontmatter-reminder {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+}
+
+.new-item-frontmatter-reminder[hidden] {
+  display: none;
+}
+
+.new-item-frontmatter-reminder-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.new-item-frontmatter-reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.new-item-create-without {
+  color: var(--muted);
+}
+
+.new-item-create-without:hover:not(:disabled) {
+  color: var(--text);
 }
 
 .frontmatter-source-dialog {

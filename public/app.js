@@ -3208,11 +3208,26 @@ function createNewItemDialog({ openFrontmatterSourceDialog }) {
           placeholder="post.md or my-folder"
         />
         <p class="new-item-hint">.md / .mdx creates a file; anything else creates a folder.</p>
-        <div class="new-item-frontmatter" hidden>
+        <p class="new-item-error" hidden></p>
+      </div>
+      <div class="new-item-frontmatter" hidden>
+        <div class="new-item-frontmatter-callout">
+          <p class="new-item-frontmatter-title">Frontmatter</p>
+          <p class="new-item-frontmatter-description">
+            Import metadata from an existing markdown file to pre-fill title, tags, and other fields.
+          </p>
           <button type="button" class="new-item-import-frontmatter">Import frontmatter from file…</button>
           <p class="new-item-frontmatter-source" hidden></p>
         </div>
-        <p class="new-item-error" hidden></p>
+        <div class="new-item-frontmatter-reminder" hidden>
+          <p class="new-item-frontmatter-reminder-text">
+            No frontmatter imported yet. Import from another file to copy metadata into this page.
+          </p>
+          <div class="new-item-frontmatter-reminder-actions">
+            <button type="button" class="primary new-item-reminder-import">Import frontmatter…</button>
+            <button type="button" class="new-item-create-without">Create without frontmatter</button>
+          </div>
+        </div>
       </div>
       <div class="new-item-form-actions">
         <button type="submit" class="primary">Create</button>
@@ -3224,11 +3239,16 @@ function createNewItemDialog({ openFrontmatterSourceDialog }) {
   const form = dialog.querySelector(".new-item-form");
   const nameInput = dialog.querySelector("#new-item-name");
   const frontmatterSection = dialog.querySelector(".new-item-frontmatter");
+  const frontmatterCallout = dialog.querySelector(".new-item-frontmatter-callout");
   const importFrontmatterBtn = dialog.querySelector(".new-item-import-frontmatter");
   const frontmatterSourceEl = dialog.querySelector(".new-item-frontmatter-source");
+  const frontmatterReminder = dialog.querySelector(".new-item-frontmatter-reminder");
+  const reminderImportBtn = dialog.querySelector(".new-item-reminder-import");
+  const createWithoutBtn = dialog.querySelector(".new-item-create-without");
   const errorEl = dialog.querySelector(".new-item-error");
   let pendingParentPath = "";
   let pendingImportedFrontmatter = null;
+  let skipFrontmatterReminder = false;
 
   function clearDialogError() {
     errorEl.hidden = true;
@@ -3244,6 +3264,18 @@ function createNewItemDialog({ openFrontmatterSourceDialog }) {
     pendingImportedFrontmatter = null;
     frontmatterSourceEl.hidden = true;
     frontmatterSourceEl.textContent = "";
+    frontmatterCallout.classList.remove("is-set");
+    importFrontmatterBtn.textContent = "Import frontmatter from file…";
+  }
+
+  function clearFrontmatterReminder() {
+    skipFrontmatterReminder = false;
+    frontmatterReminder.hidden = true;
+  }
+
+  function showFrontmatterReminder() {
+    frontmatterReminder.hidden = false;
+    frontmatterReminder.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
   function updateFrontmatterImportVisibility() {
@@ -3252,6 +3284,7 @@ function createNewItemDialog({ openFrontmatterSourceDialog }) {
 
     if (!showImport) {
       clearImportedFrontmatter();
+      clearFrontmatterReminder();
     }
   }
 
@@ -3259,7 +3292,22 @@ function createNewItemDialog({ openFrontmatterSourceDialog }) {
     pendingImportedFrontmatter = frontmatter;
     frontmatterSourceEl.textContent = `Using frontmatter from ${sourceName}`;
     frontmatterSourceEl.hidden = false;
+    frontmatterCallout.classList.add("is-set");
+    importFrontmatterBtn.textContent = "Change import source…";
+    clearFrontmatterReminder();
     clearDialogError();
+  }
+
+  function openFrontmatterImport() {
+    openFrontmatterSourceDialog(
+      {
+        parentPath: pendingParentPath,
+        newPageName: nameInput.value.trim(),
+      },
+      ({ file, frontmatter }) => {
+        setImportedFrontmatter(file.name, frontmatter);
+      },
+    );
   }
 
   closeBtn.addEventListener("click", () => {
@@ -3278,24 +3326,22 @@ function createNewItemDialog({ openFrontmatterSourceDialog }) {
     form.reset();
     clearDialogError();
     clearImportedFrontmatter();
+    clearFrontmatterReminder();
     frontmatterSection.hidden = true;
   });
 
   nameInput.addEventListener("input", () => {
     clearDialogError();
+    clearFrontmatterReminder();
     updateFrontmatterImportVisibility();
   });
 
-  importFrontmatterBtn.addEventListener("click", () => {
-    openFrontmatterSourceDialog(
-      {
-        parentPath: pendingParentPath,
-        newPageName: nameInput.value.trim(),
-      },
-      ({ file, frontmatter }) => {
-        setImportedFrontmatter(file.name, frontmatter);
-      },
-    );
+  importFrontmatterBtn.addEventListener("click", openFrontmatterImport);
+  reminderImportBtn.addEventListener("click", openFrontmatterImport);
+
+  createWithoutBtn.addEventListener("click", () => {
+    skipFrontmatterReminder = true;
+    form.requestSubmit();
   });
 
   form.addEventListener("submit", async (event) => {
@@ -3306,6 +3352,15 @@ function createNewItemDialog({ openFrontmatterSourceDialog }) {
     }
 
     clearDialogError();
+
+    if (
+      isMarkdownEntryName(name) &&
+      !pendingImportedFrontmatter &&
+      !skipFrontmatterReminder
+    ) {
+      showFrontmatterReminder();
+      return;
+    }
 
     const result = await createEntry(pendingParentPath, name, {
       frontmatter: pendingImportedFrontmatter,
@@ -3323,6 +3378,7 @@ function createNewItemDialog({ openFrontmatterSourceDialog }) {
   function openNewItemDialog(parentPath) {
     pendingParentPath = parentPath;
     clearImportedFrontmatter();
+    clearFrontmatterReminder();
     clearDialogError();
     updateFrontmatterImportVisibility();
     dialog.showModal();
