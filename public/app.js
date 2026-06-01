@@ -1700,7 +1700,7 @@ function scrollMainToTop() {
 }
 
 function updateSavedEditSnapshot() {
-  if (!currentEditFile || markdownEditor.dataset.loading) {
+  if (!currentEditFile) {
     savedEditSnapshot = null;
     return;
   }
@@ -1933,6 +1933,7 @@ function showEditView() {
 
 async function openEditView(file) {
   currentEditFile = file;
+  savedEditSnapshot = null;
   setFileInUrl(file.absolutePath);
   showEditView();
 
@@ -1942,6 +1943,7 @@ async function openEditView(file) {
   updateFrontmatterPanel(null);
   setSaveButtonState({ disabled: true });
   markdownEditor.dataset.loading = "true";
+  let editFileLoaded = false;
 
   try {
     const response = await fetch(`/api/file?path=${encodeURIComponent(file.absolutePath)}`);
@@ -1964,6 +1966,7 @@ async function openEditView(file) {
     const editorBody = prepareMarkdownBodyForEditor(data.content);
     renderMarkdownEditor(editorBody);
     resetEditorHistory(editorBody);
+    editFileLoaded = true;
     setSaveButtonState({ disabled: false });
   } catch {
     if (currentEditFile?.absolutePath === file.absolutePath) {
@@ -1973,6 +1976,9 @@ async function openEditView(file) {
     }
   } finally {
     delete markdownEditor.dataset.loading;
+    if (editFileLoaded) {
+      updateSavedEditSnapshot();
+    }
   }
 
   markdownEditor.focus();
@@ -3608,7 +3614,7 @@ try {
   // Browser may not support defaultParagraphSeparator.
 }
 
-editBackBtn.addEventListener("click", showListView);
+editBackBtn.addEventListener("click", makeGuardedAction(isEditViewDirty, showListView));
 editSaveBtn.addEventListener("click", saveCurrentFile);
 markdownEditor.addEventListener("click", (event) => {
   const preview = event.target.closest(".editor-image-preview");
