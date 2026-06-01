@@ -1,3 +1,4 @@
+import { attachDialogCloseGuard } from "./confirm-discard.js";
 import { icons } from "./icons.js";
 import { createFrontmatterEditor } from "./frontmatter-editor.js";
 import { normalizeFrontmatter, prepareImportedFrontmatter } from "./frontmatter.js";
@@ -3310,15 +3311,11 @@ function createNewItemDialog({ openFrontmatterSourceDialog }) {
     );
   }
 
-  closeBtn.addEventListener("click", () => {
-    dialog.close();
-  });
+  function isNewItemDirty() {
+    return Boolean(nameInput.value.trim()) || pendingImportedFrontmatter !== null;
+  }
 
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      dialog.close();
-    }
-  });
+  attachDialogCloseGuard(dialog, closeBtn, isNewItemDirty);
 
   dialog.addEventListener("close", () => {
     pendingParentPath = "";

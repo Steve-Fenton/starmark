@@ -1,3 +1,4 @@
+import { attachDialogCloseGuard, makeGuardedAction, makeGuardedClose } from "./confirm-discard.js";
 import { icons } from "./icons.js";
 
 const IMAGE_UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.svg,.avif,.ico,image/*";
@@ -45,10 +46,10 @@ export function createMediaDialog({
         <input
           type="search"
           class="media-search-input"
-          placeholder="Search by file name"
+          placeholder="Search by file or folder name"
           autocomplete="off"
           spellcheck="false"
-          aria-label="Search images by file name"
+          aria-label="Search images by file or folder name"
         />
       </div>
       <p class="media-status" hidden></p>
@@ -121,6 +122,8 @@ export function createMediaDialog({
   let currentMediaDir = getInitialDir();
   let isMediaUploading = false;
   let isMediaCreatingFolder = false;
+  let imageFormSnapshot = null;
+  let addFolderSnapshot = null;
 
   function formatMediaDirLabel(relativeDir) {
     return relativeDir ? relativeDir.replace(/\//g, " / ") : "public";
@@ -233,8 +236,13 @@ export function createMediaDialog({
 
   function openAddFolderDialog() {
     addFolderForm.reset();
+    addFolderSnapshot = addFolderNameInput.value;
     addFolderDialog.showModal();
     addFolderNameInput.focus();
+  }
+
+  function isAddFolderDirty() {
+    return addFolderNameInput.value !== addFolderSnapshot;
   }
 
   function createMediaAddFolderItem() {
@@ -330,8 +338,30 @@ export function createMediaDialog({
     });
   }
 
+  function captureImageFormSnapshot() {
+    return {
+      alt: imageAltInput.value,
+      lazyLoad: imageLazyInput.checked,
+      caption: imageCaptionInput.value,
+    };
+  }
+
+  function isImageFormDirty() {
+    if (!imageFormSnapshot) {
+      return false;
+    }
+
+    const current = captureImageFormSnapshot();
+    return (
+      current.alt !== imageFormSnapshot.alt ||
+      current.lazyLoad !== imageFormSnapshot.lazyLoad ||
+      current.caption !== imageFormSnapshot.caption
+    );
+  }
+
   function showMediaBrowserView() {
     pendingImage = null;
+    imageFormSnapshot = null;
     mediaBrowserView.hidden = false;
     mediaBrowserView.setAttribute("aria-hidden", "false");
     imageForm.hidden = true;
@@ -344,6 +374,7 @@ export function createMediaDialog({
     imageAltInput.value = filenameToAlt(image.name);
     imageLazyInput.checked = true;
     imageCaptionInput.value = "";
+    imageFormSnapshot = captureImageFormSnapshot();
     mediaBrowserView.hidden = true;
     mediaBrowserView.setAttribute("aria-hidden", "true");
     imageForm.hidden = false;
@@ -495,15 +526,7 @@ export function createMediaDialog({
     loadMediaDirectory(initialDir);
   }
 
-  closeBtn.addEventListener("click", () => {
-    dialog.close();
-  });
-
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      dialog.close();
-    }
-  });
+  attachDialogCloseGuard(dialog, closeBtn, () => !imageForm.hidden && isImageFormDirty());
 
   dialog.addEventListener("close", () => {
     onClose?.();
@@ -528,23 +551,13 @@ export function createMediaDialog({
     }
   });
 
-  imageBackBtn.addEventListener("click", () => {
-    showMediaBrowserView();
-  });
+  imageBackBtn.addEventListener(
+    "click",
+    makeGuardedAction(() => isImageFormDirty(), showMediaBrowserView),
+  );
 
-  addFolderCloseBtn.addEventListener("click", () => {
-    addFolderDialog.close();
-  });
-
-  addFolderCancelBtn.addEventListener("click", () => {
-    addFolderDialog.close();
-  });
-
-  addFolderDialog.addEventListener("click", (event) => {
-    if (event.target === addFolderDialog) {
-      addFolderDialog.close();
-    }
-  });
+  attachDialogCloseGuard(addFolderDialog, addFolderCloseBtn, isAddFolderDirty);
+  addFolderCancelBtn.addEventListener("click", makeGuardedClose(addFolderDialog, isAddFolderDirty));
 
   addFolderForm.addEventListener("submit", async (event) => {
     event.preventDefault();

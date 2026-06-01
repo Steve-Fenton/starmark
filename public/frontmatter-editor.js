@@ -1,4 +1,5 @@
 import { icons } from "./icons.js";
+import { attachDialogCloseGuard, makeGuardedClose } from "./confirm-discard.js";
 import { createMediaDialog } from "./media-browser.js";
 import { getMediaDir } from "./settings.js";
 import {
@@ -42,23 +43,14 @@ function createLongTextDialog() {
   const form = dialog.querySelector(".frontmatter-text-form");
   const textarea = dialog.querySelector(".frontmatter-text-textarea");
   let onSave = null;
+  let textSnapshot = null;
 
-  closeBtn.addEventListener("click", () => {
-    dialog.close();
-  });
-
-  cancelBtn.addEventListener("click", () => {
-    dialog.close();
-  });
-
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      dialog.close();
-    }
-  });
+  attachDialogCloseGuard(dialog, closeBtn, () => textarea.value !== textSnapshot);
+  cancelBtn.addEventListener("click", makeGuardedClose(dialog, () => textarea.value !== textSnapshot));
 
   dialog.addEventListener("close", () => {
     onSave = null;
+    textSnapshot = null;
   });
 
   form.addEventListener("submit", (event) => {
@@ -70,6 +62,7 @@ function createLongTextDialog() {
   function open({ title, value, save }) {
     dialog.querySelector(".dialog-header h2").textContent = title;
     textarea.value = value;
+    textSnapshot = value;
     onSave = save;
     dialog.showModal();
     textarea.focus();

@@ -1,4 +1,5 @@
 import { attachToolbarButton, createToolbarButton } from "../toolkit.js";
+import { attachDialogCloseGuard } from "../confirm-discard.js";
 import { icons } from "../icons.js";
 
 let savedLinkRange = null;
@@ -31,16 +32,17 @@ function createLinkDialog() {
   const form = dialog.querySelector(".link-form");
   const textInput = dialog.querySelector("#link-text");
   const urlInput = dialog.querySelector("#link-url");
+  let formSnapshot = null;
 
-  closeBtn.addEventListener("click", () => {
-    dialog.close();
-  });
-
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      dialog.close();
+  function isLinkFormDirty() {
+    if (!formSnapshot) {
+      return false;
     }
-  });
+
+    return textInput.value !== formSnapshot.text || urlInput.value !== formSnapshot.url;
+  }
+
+  attachDialogCloseGuard(dialog, closeBtn, isLinkFormDirty);
 
   dialog.addEventListener("close", () => {
     savedLinkRange = null;
@@ -53,7 +55,9 @@ function createLinkDialog() {
     }
   });
 
-  return { dialog, form, textInput, urlInput };
+  return { dialog, form, textInput, urlInput, setFormSnapshot: (snapshot) => {
+    formSnapshot = snapshot;
+  } };
 }
 
 function saveEditorSelection(api) {
@@ -102,7 +106,7 @@ export default {
   group: "insert",
 
   mount(container, api) {
-    const { dialog, form, textInput, urlInput } = createLinkDialog();
+    const { dialog, form, textInput, urlInput, setFormSnapshot } = createLinkDialog();
     document.body.append(dialog);
 
     form.addEventListener("submit", (event) => {
@@ -127,6 +131,7 @@ export default {
       const selectedText = saveEditorSelection(api);
       textInput.value = selectedText;
       urlInput.value = "";
+      setFormSnapshot({ text: selectedText, url: "" });
       dialog.showModal();
       urlInput.focus();
     });

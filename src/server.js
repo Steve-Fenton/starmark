@@ -821,7 +821,7 @@ function getMediaParentDir(currentDir) {
   return parentDir === "." ? "" : parentDir;
 }
 
-async function walkMediaImages(dirPath, relativeDir, query, images) {
+async function walkMediaSearch(dirPath, relativeDir, query, folders, images) {
   let entries;
 
   try {
@@ -838,10 +838,18 @@ async function walkMediaImages(dirPath, relativeDir, query, images) {
       : entry.name;
 
     if (entry.isDirectory()) {
-      await walkMediaImages(
+      if (entry.name.toLowerCase().includes(query)) {
+        folders.push({
+          name: entry.name,
+          dir: entryRelativePath,
+        });
+      }
+
+      await walkMediaSearch(
         path.join(dirPath, entry.name),
         entryRelativePath,
         query,
+        folders,
         images,
       );
       continue;
@@ -883,14 +891,16 @@ async function searchMediaImages(projectPath, relativePath, query) {
     return listMediaDirectory(projectPath, relativePath);
   }
 
+  const folders = [];
   const images = [];
-  await walkMediaImages(target, currentDir, normalizedQuery, images);
+  await walkMediaSearch(target, currentDir, normalizedQuery, folders, images);
+  folders.sort((a, b) => a.name.localeCompare(b.name));
   images.sort((a, b) => a.name.localeCompare(b.name));
 
   return {
     currentDir,
     parentDir: getMediaParentDir(currentDir),
-    folders: [],
+    folders,
     images,
     searchQuery: query.trim(),
   };
