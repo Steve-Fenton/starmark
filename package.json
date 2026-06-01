@@ -1,6 +1,6 @@
 {
   "name": "starmark",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Browse and edit markdown content in local Astro sites",
   "keywords": [
     "cms",
