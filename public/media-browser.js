@@ -133,19 +133,32 @@ export function createMediaDialog({
     return `/api/media/file?project=${encodeURIComponent(getProjectPath())}&path=${encodeURIComponent(relativePath)}`;
   }
 
+  function getMediaSearchLabel(relativePath, searchRootDir) {
+    const prefix = searchRootDir ? `${searchRootDir}/` : "";
+
+    if (searchRootDir && relativePath.startsWith(prefix)) {
+      return relativePath.slice(prefix.length);
+    }
+
+    return relativePath;
+  }
+
   function getImageSearchLabel(image, searchRootDir) {
+    const fullPath = image.dir ? `${image.dir}/${image.name}` : image.name;
+
     if (image.dir === searchRootDir) {
       return image.name;
     }
 
-    const fullPath = image.dir ? `${image.dir}/${image.name}` : image.name;
-    const prefix = searchRootDir ? `${searchRootDir}/` : "";
+    return getMediaSearchLabel(fullPath, searchRootDir);
+  }
 
-    if (searchRootDir && fullPath.startsWith(prefix)) {
-      return fullPath.slice(prefix.length);
+  function getFolderSearchLabel(folder, searchRootDir) {
+    if (folder.dir === searchRootDir) {
+      return folder.name;
     }
 
-    return fullPath;
+    return getMediaSearchLabel(folder.dir, searchRootDir);
   }
 
   function navigateToMediaDirectory(relativeDir) {
@@ -405,29 +418,32 @@ export function createMediaDialog({
     renderMediaBreadcrumb(data.currentDir);
     mediaGrid.replaceChildren();
 
+    for (const folder of data.folders) {
+      const displayName = isSearching
+        ? getFolderSearchLabel(folder, data.currentDir)
+        : folder.name;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "media-item-btn media-folder-btn";
+      button.title = displayName;
+
+      const preview = document.createElement("span");
+      preview.className = "media-item-preview media-folder-preview";
+      preview.innerHTML = icons.folder;
+      preview.setAttribute("aria-hidden", "true");
+
+      const label = document.createElement("span");
+      label.className = "media-item-name";
+      label.textContent = displayName;
+
+      button.append(preview, label);
+      button.addEventListener("click", () => {
+        navigateToMediaDirectory(folder.dir);
+      });
+      mediaGrid.append(button);
+    }
+
     if (!isSearching) {
-      for (const folder of data.folders) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "media-item-btn media-folder-btn";
-        button.title = folder.name;
-
-        const preview = document.createElement("span");
-        preview.className = "media-item-preview media-folder-preview";
-        preview.innerHTML = icons.folder;
-        preview.setAttribute("aria-hidden", "true");
-
-        const label = document.createElement("span");
-        label.className = "media-item-name";
-        label.textContent = folder.name;
-
-        button.append(preview, label);
-        button.addEventListener("click", () => {
-          navigateToMediaDirectory(folder.dir);
-        });
-        mediaGrid.append(button);
-      }
-
       mediaGrid.append(createMediaAddFolderItem(), createMediaAddItem());
     }
 
@@ -462,7 +478,7 @@ export function createMediaDialog({
     if (data.folders.length === 0 && data.images.length === 0) {
       if (isSearching) {
         setMediaStatus(
-          `No images matching "${data.searchQuery}" in ${formatMediaDirLabel(data.currentDir)}.`,
+          `No files or folders matching "${data.searchQuery}" in ${formatMediaDirLabel(data.currentDir)}.`,
         );
       } else {
         setMediaStatus("");

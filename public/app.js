@@ -1,4 +1,4 @@
-import { attachDialogCloseGuard } from "./confirm-discard.js";
+import { attachDialogCloseGuard, makeGuardedAction } from "./confirm-discard.js";
 import { icons } from "./icons.js";
 import { createFrontmatterEditor } from "./frontmatter-editor.js";
 import { normalizeFrontmatter, prepareImportedFrontmatter } from "./frontmatter.js";
@@ -65,6 +65,7 @@ let expandedPaths = new Set();
 let hasStoredExpandedPaths = false;
 let currentEditFile = null;
 let currentEditFrontmatter = null;
+let savedEditSnapshot = null;
 let isSavingFile = false;
 let saveButtonResetTimeout = null;
 let pendingEditorCaret = null;
@@ -1698,12 +1699,39 @@ function scrollMainToTop() {
   window.scrollTo(0, 0);
 }
 
+function updateSavedEditSnapshot() {
+  if (!currentEditFile || markdownEditor.dataset.loading) {
+    savedEditSnapshot = null;
+    return;
+  }
+
+  flushEditorHistory();
+  savedEditSnapshot = {
+    body: prepareMarkdownBodyForSource(getEditorContent()),
+    frontmatter: normalizeFrontmatter(frontmatterEditor.getValue()),
+  };
+}
+
+function isEditViewDirty() {
+  if (!currentEditFile || markdownEditor.dataset.loading || !savedEditSnapshot) {
+    return false;
+  }
+
+  flushEditorHistory();
+  const body = prepareMarkdownBodyForSource(getEditorContent());
+  const frontmatter = normalizeFrontmatter(frontmatterEditor.getValue());
+  return (
+    body !== savedEditSnapshot.body || frontmatter !== savedEditSnapshot.frontmatter
+  );
+}
+
 function showListView() {
   listView.hidden = false;
   editView.hidden = true;
   scrollMainToTop();
   currentEditFile = null;
   currentEditFrontmatter = null;
+  savedEditSnapshot = null;
   frontmatterPanel.hidden = true;
   frontmatterEditor.setValue("");
   clearTimeout(saveButtonResetTimeout);
@@ -1871,6 +1899,7 @@ async function saveCurrentFile() {
     const editorBody = prepareMarkdownBodyForEditor(savedBody);
     renderMarkdownEditor(editorBody);
     resetEditorHistory(editorBody);
+    updateSavedEditSnapshot();
     setSaveButtonState({ label: "Saved", disabled: false });
     resetSaveButtonSoon();
   } catch {
