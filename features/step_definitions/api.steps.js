@@ -61,6 +61,21 @@ When("I scan the sample project", async function () {
   }
 });
 
+When('I create folder {string} in {string}', async function (name, parentPath) {
+  this.lastResponse = await this.agent.post("/api/entry").send({
+    projectPath: this.sampleProjectPath,
+    parentPath,
+    name,
+  });
+
+  if (this.lastResponse.status === 200 && this.lastResponse.body.type === "folder") {
+    this.createdFolderPath = path.join(
+      this.sampleProjectPath,
+      this.lastResponse.body.relativePath,
+    );
+  }
+});
+
 When("I read that file via the API", async function () {
   this.lastResponse = await this.agent
     .get("/api/file")

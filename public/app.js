@@ -976,6 +976,52 @@ function filterFiles(files, query) {
   });
 }
 
+function getDirectoriesForFileTree(files, directories, query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return directories;
+  }
+
+  const relevant = new Set(
+    directories.filter((directoryPath) =>
+      directoryPath.toLowerCase().includes(normalizedQuery),
+    ),
+  );
+
+  for (const file of files) {
+    const parentSegments = normalizeRelativePath(file.relativePath)
+      .split("/")
+      .slice(0, -1);
+
+    let current = "";
+    for (const segment of parentSegments) {
+      current = current ? `${current}/${segment}` : segment;
+      relevant.add(current);
+    }
+  }
+
+  return [...relevant].sort((a, b) => a.localeCompare(b));
+}
+
+function addScannedDirectory(relativePath) {
+  const normalized = normalizeRelativePath(relativePath);
+  if (!normalized || scannedDirectories.includes(normalized)) {
+    return;
+  }
+
+  scannedDirectories = [...scannedDirectories, normalized].sort((a, b) =>
+    a.localeCompare(b),
+  );
+}
+
+function rememberExpandedTreePath(relativePath) {
+  for (const pathValue of getPathsToExpand(relativePath)) {
+    expandedPaths.add(pathValue);
+  }
+
+  saveExpandedPaths();
+}
+
 function loadExpandedPaths(projectPath) {
   expandedPaths = new Set();
   hasStoredExpandedPaths = false;
@@ -1549,10 +1595,15 @@ function updateFileResults() {
   const query = fileSearch.value.trim();
   const filteredFiles = filterFiles(scannedFiles, query);
   const isSearching = query.length > 0;
+  const directoriesForTree = getDirectoriesForFileTree(
+    filteredFiles,
+    scannedDirectories,
+    query,
+  );
 
   fileCount.textContent = formatFileCount(filteredFiles.length, scannedFiles.length);
 
-  if (filteredFiles.length === 0 && isSearching) {
+  if (filteredFiles.length === 0 && isSearching && directoriesForTree.length === 0) {
     emptyState.hidden = false;
     emptyState.textContent = "No files match your search.";
     fileList.hidden = true;
@@ -1562,7 +1613,7 @@ function updateFileResults() {
   }
 
   const tree = buildFileTree(filteredFiles, {
-    directories: isSearching ? [] : scannedDirectories,
+    directories: directoriesForTree,
     scanTargets: lastScanTargets,
   });
 
@@ -1624,7 +1675,9 @@ async function applyScanData(data) {
   folderInput.value = data.projectPath;
   currentProjectPath = data.projectPath;
   setProjectInUrl(data.projectPath);
-  loadExpandedPaths(currentProjectPath);
+  if (projectChanged) {
+    loadExpandedPaths(currentProjectPath);
+  }
 
   scanInfo.hidden = false;
   scanInfo.textContent = formatScanInfo(data.scanTargets);
@@ -2667,10 +2720,20 @@ async function createEntry(parentPath, name, { frontmatter = null } = {}) {
       return { ok: false, error: data.error ?? "Could not create entry" };
     }
 
-    expandedPaths.add(parentPath);
-    saveExpandedPaths();
+    rememberExpandedTreePath(parentPath);
+
+    if (data.type === "folder") {
+      addScannedDirectory(data.relativePath);
+      rememberExpandedTreePath(data.relativePath);
+      updateFileResults();
+    }
 
     await refreshScan();
+
+    rememberExpandedTreePath(parentPath);
+    if (data.type === "folder") {
+      rememberExpandedTreePath(data.relativePath);
+    }
 
     if (data.type === "file") {
       const file = scannedFiles.find((entry) => entry.absolutePath === data.absolutePath) ?? {

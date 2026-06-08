@@ -31,4 +31,8 @@ After(async function () {
   if (this.currentFileAbsolutePath && this.originalFileContent !== null) {
     await fs.writeFile(this.currentFileAbsolutePath, this.originalFileContent, "utf8");
   }
+
+  if (this.createdFolderPath) {
+    await fs.rm(this.createdFolderPath, { recursive: true, force: true });
+  }
 });
