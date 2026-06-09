@@ -31,7 +31,13 @@ Visit the URL and go edit. All the changes will be in your changes tab ready for
 
 ## Settings
 
-Open the settings dialog from the top bar while a project is loaded. Settings are stored per project in `.starmark/project.ini` inside each project folder. Your recent project list is kept locally in `.starmark/user.ini` where you run *starmark*.
+Open the settings dialog from the top bar while a project is loaded. Settings are stored per project in `.starmark/project.ini` inside each project folder. Your recent project list is kept in a single user config file:
+
+- **macOS:** `~/Library/Application Support/starmark/user.ini`
+- **Windows:** `%APPDATA%\starmark\user.ini`
+- **Linux:** `~/.config/starmark/user.ini` (or `$XDG_CONFIG_HOME/starmark/user.ini`)
+
+If you previously ran *starmark* from a project folder, settings are migrated automatically from that folder's `.starmark/user.ini` the next time you open it.
 
 You can commit `.starmark/project.ini` to share site type, image mode, media folder, and content date field settings with your team.
 

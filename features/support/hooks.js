@@ -6,7 +6,7 @@ import { getProjectIniPath } from "../../src/user-config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "../..");
-const USER_INI_PATH = path.join(REPO_ROOT, ".starmark/user.ini");
+const USER_INI_PATH = path.join(REPO_ROOT, ".starmark", "user.ini");
 const SETTINGS_PROJECT_PATHS = [
   path.join(REPO_ROOT, "fixtures/sample-astro"),
   REPO_ROOT,
@@ -21,12 +21,14 @@ async function readOptionalFile(filePath) {
 }
 
 Before({ tags: "@settings" }, async function () {
+  process.env.STARMARK_USER_INI = USER_INI_PATH;
   this.originalUserIni = await readOptionalFile(USER_INI_PATH);
   this.originalProjectInis = new Map();
 
   for (const projectPath of SETTINGS_PROJECT_PATHS) {
     const projectIniPath = getProjectIniPath(projectPath);
     this.originalProjectInis.set(projectIniPath, await readOptionalFile(projectIniPath));
+    await fs.rm(projectIniPath, { force: true });
   }
 
   await fs.mkdir(path.dirname(USER_INI_PATH), { recursive: true });
@@ -34,6 +36,8 @@ Before({ tags: "@settings" }, async function () {
 });
 
 After({ tags: "@settings" }, async function () {
+  delete process.env.STARMARK_USER_INI;
+
   if (this.originalUserIni === null) {
     await fs.rm(USER_INI_PATH, { force: true });
   } else {

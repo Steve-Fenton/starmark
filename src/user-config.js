@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import os from "os";
 import path from "path";
 import { DEFAULT_SITE_TYPE, normalizeSiteType } from "./site-strategy.js";
 
@@ -39,7 +40,35 @@ export function normalizeContentDateField(value) {
   return trimmed;
 }
 
-export function getUserIniPath(cwd = process.cwd()) {
+export function getStarmarkConfigDir() {
+  if (process.env.STARMARK_CONFIG_DIR) {
+    return process.env.STARMARK_CONFIG_DIR;
+  }
+
+  const home = os.homedir();
+
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+    return path.join(appData, "starmark");
+  }
+
+  if (process.platform === "darwin") {
+    return path.join(home, "Library", "Application Support", "starmark");
+  }
+
+  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+  return path.join(xdgConfig, "starmark");
+}
+
+export function getUserIniPath() {
+  if (process.env.STARMARK_USER_INI) {
+    return process.env.STARMARK_USER_INI;
+  }
+
+  return path.join(getStarmarkConfigDir(), "user.ini");
+}
+
+export function getLegacyUserIniPath(cwd = process.cwd()) {
   return path.join(cwd, ".starmark", "user.ini");
 }
 
@@ -179,15 +208,122 @@ async function parseProjectPaths(lines = []) {
   return projects;
 }
 
-async function readIniSections(cwd = process.cwd()) {
-  const iniPath = getUserIniPath(cwd);
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
+async function readIniSections(iniPath) {
   try {
     const contents = await fs.readFile(iniPath, "utf8");
     return parseIniSections(contents);
   } catch {
     return {};
   }
+}
+
+function mergeProjects(existing = [], incoming = []) {
+  const merged = [...existing];
+  const seen = new Set(existing.map((project) => path.resolve(project.path)));
+
+  for (const project of incoming) {
+    const resolved = path.resolve(project.path);
+    if (seen.has(resolved)) {
+      continue;
+    }
+
+    seen.add(resolved);
+    merged.push(project);
+  }
+
+  return merged;
+}
+
+async function migrateProjectSettingsToProjectIni(projects, projectSettings, legacySettings = null) {
+  for (const [projectKey, settings] of Object.entries(projectSettings)) {
+    const project = projects.find((entry) => resolveProjectKey(entry.path) === projectKey);
+    if (!project) {
+      continue;
+    }
+
+    if ((await readProjectIni(project.path)) === null) {
+      await writeProjectIni(project.path, settings);
+    }
+  }
+
+  if (!legacySettings) {
+    return;
+  }
+
+  for (const project of projects) {
+    if ((await readProjectIni(project.path)) !== null) {
+      continue;
+    }
+
+    const projectKey = resolveProjectKey(project.path);
+    if (projectSettings[projectKey]) {
+      continue;
+    }
+
+    await writeProjectIni(project.path, legacySettings);
+  }
+}
+
+async function migrateLegacyUserIni(cwd = process.cwd()) {
+  const legacyPath = getLegacyUserIniPath(cwd);
+  const userIniPath = getUserIniPath();
+
+  if (path.resolve(legacyPath) === path.resolve(userIniPath)) {
+    return;
+  }
+
+  if (!(await fileExists(legacyPath))) {
+    return;
+  }
+
+  const legacySections = await readIniSections(legacyPath);
+  const legacyConfig = {
+    projects: await parseProjectPaths(legacySections.projects ?? []),
+    legacySettings: legacySections.settings
+      ? parseSettingsLines(legacySections.settings)
+      : null,
+    projectSettings: parseProjectSettingsSections(legacySections),
+  };
+
+  let mergedProjects = legacyConfig.projects;
+  let mergedProjectSettings = { ...legacyConfig.projectSettings };
+  let mergedLegacySettings = legacyConfig.legacySettings;
+
+  if (await fileExists(userIniPath)) {
+    const currentSections = await readIniSections(userIniPath);
+    const currentConfig = {
+      projects: await parseProjectPaths(currentSections.projects ?? []),
+      legacySettings: currentSections.settings
+        ? parseSettingsLines(currentSections.settings)
+        : null,
+      projectSettings: parseProjectSettingsSections(currentSections),
+    };
+
+    mergedProjects = mergeProjects(currentConfig.projects, legacyConfig.projects);
+    mergedProjectSettings = {
+      ...legacyConfig.projectSettings,
+      ...currentConfig.projectSettings,
+    };
+    mergedLegacySettings = currentConfig.legacySettings ?? legacyConfig.legacySettings;
+  }
+
+  await migrateProjectSettingsToProjectIni(
+    mergedProjects,
+    mergedProjectSettings,
+    mergedLegacySettings,
+  );
+
+  await writeUserConfig({ projects: mergedProjects });
+  await fs.unlink(legacyPath).catch(() => {});
 }
 
 function parseProjectSettingsSections(sections = {}) {
@@ -249,52 +385,33 @@ async function writeProjectIni(projectPath, settings) {
   await fs.writeFile(iniPath, formatProjectIni(settings), "utf8");
 }
 
-async function writeUserConfig(
-  { projects, projectSettings = {}, legacySettings = null },
-  cwd = process.cwd(),
-) {
+async function writeUserConfig({ projects }) {
   const lines = ["[projects]", ...projects.map((project) => `path=${project.path}`), ""];
-
-  if (legacySettings) {
-    const normalizedLegacy = normalizeSettings(legacySettings);
-    lines.push(
-      "[settings]",
-      `siteType=${normalizedLegacy.siteType}`,
-      `images=${normalizedLegacy.images}`,
-      `mediaDir=${normalizedLegacy.mediaDir}`,
-      `contentDateField=${normalizedLegacy.contentDateField}`,
-      "",
-    );
-  }
-
-  for (const projectKey of Object.keys(projectSettings).sort()) {
-    const normalized = normalizeSettings(projectSettings[projectKey]);
-    lines.push(
-      `[settings:${projectKey}]`,
-      `siteType=${normalized.siteType}`,
-      `images=${normalized.images}`,
-      `mediaDir=${normalized.mediaDir}`,
-      `contentDateField=${normalized.contentDateField}`,
-      "",
-    );
-  }
-
-  const iniPath = getUserIniPath(cwd);
+  const iniPath = getUserIniPath();
 
   await fs.mkdir(path.dirname(iniPath), { recursive: true });
   await fs.writeFile(iniPath, `${lines.join("\n")}\n`, "utf8");
 }
 
 export async function readUserConfig(cwd = process.cwd()) {
-  const sections = await readIniSections(cwd);
+  await migrateLegacyUserIni(cwd);
+
+  const sections = await readIniSections(getUserIniPath());
   const legacySettings = sections.settings
     ? parseSettingsLines(sections.settings)
     : null;
+  const projectSettings = parseProjectSettingsSections(sections);
+  const projects = await parseProjectPaths(sections.projects ?? []);
+
+  if (legacySettings || Object.keys(projectSettings).length > 0) {
+    await migrateProjectSettingsToProjectIni(projects, projectSettings, legacySettings);
+    await writeUserConfig({ projects });
+  }
 
   return {
-    projects: await parseProjectPaths(sections.projects ?? []),
-    legacySettings,
-    projectSettings: parseProjectSettingsSections(sections),
+    projects,
+    legacySettings: null,
+    projectSettings: {},
   };
 }
 
@@ -306,23 +423,19 @@ export async function readProjectSettings(projectPath, cwd = process.cwd()) {
     return { ...fromProjectIni };
   }
 
-  const config = await readUserConfig(cwd);
-  const projectKey = resolveProjectKey(resolved);
+  await readUserConfig(cwd);
 
-  if (config.projectSettings[projectKey]) {
-    const settings = config.projectSettings[projectKey];
-    await writeProjectIni(resolved, settings);
-    delete config.projectSettings[projectKey];
-    await writeUserConfig(config, cwd);
-    return { ...settings };
+  const migrated = await readProjectIni(resolved);
+  if (migrated !== null) {
+    return { ...migrated };
   }
 
-  return getProjectSettings(resolved, config);
+  return { ...DEFAULT_SETTINGS };
 }
 
 export async function saveProjects(projects, cwd = process.cwd()) {
-  const config = await readUserConfig(cwd);
-  await writeUserConfig({ ...config, projects }, cwd);
+  await readUserConfig(cwd);
+  await writeUserConfig({ projects });
 }
 
 export async function removeProject(projectPath, cwd = process.cwd()) {
@@ -332,21 +445,12 @@ export async function removeProject(projectPath, cwd = process.cwd()) {
     (project) => resolveProjectKey(project.path) !== projectKey,
   );
 
-  delete config.projectSettings[projectKey];
-  await writeUserConfig({ ...config, projects }, cwd);
+  await writeUserConfig({ projects });
 }
 
-export async function saveProjectSettings(projectPath, settings, cwd = process.cwd()) {
+export async function saveProjectSettings(projectPath, settings) {
   const resolved = path.resolve(projectPath);
   const normalized = normalizeSettings(settings);
 
   await writeProjectIni(resolved, normalized);
-
-  const config = await readUserConfig(cwd);
-  const projectKey = resolveProjectKey(resolved);
-
-  if (config.projectSettings[projectKey]) {
-    delete config.projectSettings[projectKey];
-    await writeUserConfig(config, cwd);
-  }
 }
