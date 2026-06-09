@@ -41,6 +41,10 @@ export function getUserIniPath(cwd = process.cwd()) {
   return path.join(cwd, ".starmark", "user.ini");
 }
 
+export function getProjectIniPath(projectPath) {
+  return path.join(path.resolve(projectPath), ".starmark", "project.ini");
+}
+
 export function resolveProjectKey(projectPath) {
   return path.resolve(projectPath).replace(/\\/g, "/").toLowerCase();
 }
@@ -164,7 +168,7 @@ async function parseProjectPaths(lines = []) {
 }
 
 async function readIniSections(cwd = process.cwd()) {
-  const iniPath = path.join(cwd, ".starmark", "user.ini");
+  const iniPath = getUserIniPath(cwd);
 
   try {
     const contents = await fs.readFile(iniPath, "utf8");
@@ -202,6 +206,36 @@ export function getProjectSettings(projectPath, config) {
   return { ...DEFAULT_SETTINGS };
 }
 
+function formatProjectIni(settings) {
+  const normalized = normalizeSettings(settings);
+  return [
+    "[settings]",
+    `images=${normalized.images}`,
+    `mediaDir=${normalized.mediaDir}`,
+    `contentDateField=${normalized.contentDateField}`,
+    "",
+  ].join("\n");
+}
+
+async function readProjectIni(projectPath) {
+  const iniPath = getProjectIniPath(projectPath);
+
+  try {
+    const contents = await fs.readFile(iniPath, "utf8");
+    const sections = parseIniSections(contents);
+    return parseSettingsLines(sections.settings ?? []);
+  } catch {
+    return null;
+  }
+}
+
+async function writeProjectIni(projectPath, settings) {
+  const iniPath = getProjectIniPath(projectPath);
+
+  await fs.mkdir(path.dirname(iniPath), { recursive: true });
+  await fs.writeFile(iniPath, formatProjectIni(settings), "utf8");
+}
+
 async function writeUserConfig(
   { projects, projectSettings = {}, legacySettings = null },
   cwd = process.cwd(),
@@ -230,7 +264,7 @@ async function writeUserConfig(
     );
   }
 
-  const iniPath = path.join(cwd, ".starmark", "user.ini");
+  const iniPath = getUserIniPath(cwd);
 
   await fs.mkdir(path.dirname(iniPath), { recursive: true });
   await fs.writeFile(iniPath, `${lines.join("\n")}\n`, "utf8");
@@ -250,8 +284,25 @@ export async function readUserConfig(cwd = process.cwd()) {
 }
 
 export async function readProjectSettings(projectPath, cwd = process.cwd()) {
+  const resolved = path.resolve(projectPath);
+  const fromProjectIni = await readProjectIni(resolved);
+
+  if (fromProjectIni !== null) {
+    return { ...fromProjectIni };
+  }
+
   const config = await readUserConfig(cwd);
-  return getProjectSettings(projectPath, config);
+  const projectKey = resolveProjectKey(resolved);
+
+  if (config.projectSettings[projectKey]) {
+    const settings = config.projectSettings[projectKey];
+    await writeProjectIni(resolved, settings);
+    delete config.projectSettings[projectKey];
+    await writeUserConfig(config, cwd);
+    return { ...settings };
+  }
+
+  return getProjectSettings(resolved, config);
 }
 
 export async function saveProjects(projects, cwd = process.cwd()) {
@@ -271,9 +322,16 @@ export async function removeProject(projectPath, cwd = process.cwd()) {
 }
 
 export async function saveProjectSettings(projectPath, settings, cwd = process.cwd()) {
-  const config = await readUserConfig(cwd);
-  const projectKey = resolveProjectKey(projectPath);
+  const resolved = path.resolve(projectPath);
+  const normalized = normalizeSettings(settings);
 
-  config.projectSettings[projectKey] = normalizeSettings(settings);
-  await writeUserConfig(config, cwd);
+  await writeProjectIni(resolved, normalized);
+
+  const config = await readUserConfig(cwd);
+  const projectKey = resolveProjectKey(resolved);
+
+  if (config.projectSettings[projectKey]) {
+    delete config.projectSettings[projectKey];
+    await writeUserConfig(config, cwd);
+  }
 }

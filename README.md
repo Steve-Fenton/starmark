@@ -31,7 +31,9 @@ Visit the URL and go edit. All the changes will be in your changes tab ready for
 
 ## Settings
 
-Open the settings dialog from the top bar while a project is loaded. Settings are stored per project in `.starmark/user.ini` in the directory where you run *starmark*.
+Open the settings dialog from the top bar while a project is loaded. Settings are stored per project in `.starmark/project.ini` inside each project folder. Your recent project list is kept locally in `.starmark/user.ini` where you run *starmark*.
+
+You can commit `.starmark/project.ini` to share image mode, media folder, and content date field settings with your team.
 
 ### Images
 
@@ -54,4 +56,4 @@ The front matter field that is updated automatically when you save changes to a 
 
 Default: `modDate`
 
-If your site uses a different field name, enter it here — for example `updateDate` or `latestChange`. Leave the field blank to disable automatic updates.
+If your site uses a different field name, enter it here — for example `updated` or `latestChange`. Leave the field blank to disable automatic updates.
