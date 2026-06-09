@@ -993,13 +993,13 @@ function matchesSearch(haystack, query) {
   );
 }
 
-function filterFiles(files, query) {
+function filterFiles(files, query, directories = []) {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
     return files;
   }
 
-  return files.filter((file) => {
+  const matched = files.filter((file) => {
     const haystack = [
       file.name,
       file.relativePath,
@@ -1009,6 +1009,28 @@ function filterFiles(files, query) {
 
     return matchesSearch(haystack, normalizedQuery);
   });
+
+  const matchedPaths = new Set(matched.map((file) => file.relativePath));
+  const matchedDirectories = directories.filter((directoryPath) =>
+    matchesSearch(directoryPath, normalizedQuery),
+  );
+
+  for (const directoryPath of matchedDirectories) {
+    const normalizedDirectoryPath = normalizeRelativePath(directoryPath);
+
+    for (const file of files) {
+      if (matchedPaths.has(file.relativePath) || !isIndexFile(file.name)) {
+        continue;
+      }
+
+      if (getParentRelativePath(file.relativePath) === normalizedDirectoryPath) {
+        matched.push(file);
+        matchedPaths.add(file.relativePath);
+      }
+    }
+  }
+
+  return matched;
 }
 
 function getDirectoriesForFileTree(files, directories, query) {
@@ -1184,7 +1206,12 @@ function resolveTreePath(relativePath, sourceHint) {
 
 function isIndexFile(name) {
   const lower = name.toLowerCase();
-  return lower === "index.md" || lower === "index.mdx";
+  return (
+    lower === "index.md" ||
+    lower === "index.mdx" ||
+    lower === "_index.md" ||
+    lower === "_index.mdx"
+  );
 }
 
 function parseNavOrderFromFrontmatter(frontmatter) {
@@ -1632,7 +1659,7 @@ function buildFileTree(files, { directories = [], scanTargets = [] } = {}) {
 
 function updateFileResults() {
   const query = fileSearch.value.trim();
-  const filteredFiles = filterFiles(scannedFiles, query);
+  const filteredFiles = filterFiles(scannedFiles, query, scannedDirectories);
   const isSearching = query.length > 0;
   const directoriesForTree = getDirectoriesForFileTree(
     filteredFiles,
