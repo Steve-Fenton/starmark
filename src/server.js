@@ -246,6 +246,7 @@ async function resolveScanTargets(projectPath) {
   const targets = [];
   const contentDir = path.join(projectPath, "src", "content");
   const pagesDir = path.join(projectPath, "src", "pages");
+  const hugoContentDir = path.join(projectPath, "content");
 
   if (await isDirectory(contentDir)) {
     targets.push({
@@ -263,6 +264,14 @@ async function resolveScanTargets(projectPath) {
     });
   }
 
+  if (await isDirectory(hugoContentDir)) {
+    targets.push({
+      source: "hugo",
+      scanRoot: hugoContentDir,
+      pathPrefix: "content",
+    });
+  }
+
   if (targets.length === 0) {
     targets.push({
       source: "project",
@@ -274,7 +283,7 @@ async function resolveScanTargets(projectPath) {
   return targets;
 }
 
-const SOURCE_ORDER = { content: 0, pages: 1, project: 2 };
+const SOURCE_ORDER = { content: 0, pages: 1, hugo: 2, project: 3 };
 
 function sortFiles(files) {
   return files.sort((a, b) => {

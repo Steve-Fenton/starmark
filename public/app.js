@@ -96,6 +96,7 @@ const MAX_EDITOR_HISTORY = 100;
 const SOURCE_ROOTS = {
   content: "src/content",
   pages: "src/pages",
+  hugo: "content",
 };
 
 const HEADING_LINE_RE = /^(#{1,6})\s+(.*)$/;
@@ -1171,6 +1172,17 @@ function resolveTreePath(relativePath, sourceHint) {
         normalized === "src/pages"
           ? []
           : normalized.slice(`${SOURCE_ROOTS.pages}/`.length).split("/").filter(Boolean),
+    };
+  }
+
+  if (normalized === "content" || normalized.startsWith("content/")) {
+    return {
+      source: sourceHint ?? "hugo",
+      rootPath: SOURCE_ROOTS.hugo,
+      segments:
+        normalized === "content"
+          ? []
+          : normalized.slice(`${SOURCE_ROOTS.hugo}/`.length).split("/").filter(Boolean),
     };
   }
 
@@ -2250,7 +2262,7 @@ function formatScanInfo(scanTargets) {
   const astroTargets = scanTargets.filter((target) => target.source !== "project");
 
   if (astroTargets.length === 0) {
-    return "No src/content/ or src/pages/ found — scanning project root";
+    return "No src/content/, src/pages/, or content/ found — scanning project root";
   }
 
   const labels = astroTargets.map((target) => `${target.pathPrefix}/`);
@@ -2312,6 +2324,7 @@ function createSourceBadge(source) {
   const sourceIcons = {
     content: icons.fileText,
     pages: icons.layout,
+    hugo: icons.fileText,
     project: icons.folder,
   };
 

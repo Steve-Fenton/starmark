@@ -194,7 +194,7 @@ export function createFrontmatterEditor(
       data = {};
       parseError = null;
       rawFallback = "";
-      render();
+      safeRender();
       silent = false;
       return;
     }
@@ -209,12 +209,12 @@ export function createFrontmatterEditor(
       data = {};
     }
 
-    render();
+    safeRender();
     silent = false;
   }
 
   function refresh() {
-    render();
+    safeRender();
     emitChange();
   }
 
@@ -233,6 +233,21 @@ export function createFrontmatterEditor(
 
     container.appendChild(renderObjectEditor(data, refresh, touchData, 0, [], mediaPickerContext));
     container.appendChild(renderAddFieldButton(data, refresh));
+  }
+
+  function safeRender() {
+    try {
+      render();
+    } catch (error) {
+      if (!parseError) {
+        parseError =
+          error instanceof Error ? error.message : "Could not render frontmatter";
+      }
+
+      container.replaceChildren();
+      container.appendChild(renderParseError());
+      container.appendChild(renderRawEditor());
+    }
   }
 
   container.addEventListener("keydown", (event) => {
@@ -265,7 +280,7 @@ export function createFrontmatterEditor(
       try {
         data = parseFrontmatter(rawFallback);
         parseError = null;
-        render();
+        safeRender();
       } catch {
         // Stay in raw fallback mode until YAML is valid.
       }
