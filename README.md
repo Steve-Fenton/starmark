@@ -31,4 +31,27 @@ Visit the URL and go edit. All the changes will be in your changes tab ready for
 
 ## Settings
 
+Open the settings dialog from the top bar while a project is loaded. Settings are stored per project in `.starmark/user.ini` in the directory where you run *starmark*.
 
+### Images
+
+Controls how the image insert tool writes markup into your content.
+
+- **Accelerator** (default) — inserts Astro Accelerator `:::figure` blocks with `:img{}` components.
+- **Markdown** — inserts standard HTML `<figure>` elements with Markdown image syntax.
+
+### Media library folder
+
+The folder opened by the media library and image insert tools when browsing for images.
+
+Default: `public/img`
+
+You can enter a path relative to your project root, such as `public/blog/img`. Paths are normalised to sit under `public/`.
+
+### Content date field
+
+The front matter field that is updated automatically when you save changes to a page's markdown content. Front matter-only edits do not update this field.
+
+Default: `modDate`
+
+If your site uses a different field name, enter it here — for example `updateDate` or `latestChange`. Leave the field blank to disable automatic updates.
