@@ -28,3 +28,7 @@ Visit the URL and go edit. All the changes will be in your changes tab ready for
 ## License
 
 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/)
+
+## Settings
+
+

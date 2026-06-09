@@ -4,7 +4,10 @@ import path from "path";
 export const DEFAULT_SETTINGS = {
   images: "accelerator",
   mediaDir: "public/img",
+  contentDateField: "modDate",
 };
+
+const CONTENT_DATE_FIELD_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function normalizeMediaDir(value) {
   let normalized = String(value ?? DEFAULT_SETTINGS.mediaDir)
@@ -23,6 +26,23 @@ export function normalizeMediaDir(value) {
 export function formatMediaDir(value) {
   const relative = normalizeMediaDir(value);
   return relative ? `public/${relative}` : "public/";
+}
+
+export function normalizeContentDateField(value) {
+  if (value === undefined || value === null) {
+    return DEFAULT_SETTINGS.contentDateField;
+  }
+
+  const trimmed = String(value).trim();
+  if (trimmed === "") {
+    return "";
+  }
+
+  if (!CONTENT_DATE_FIELD_PATTERN.test(trimmed)) {
+    return DEFAULT_SETTINGS.contentDateField;
+  }
+
+  return trimmed;
 }
 
 export function getUserIniPath(cwd = process.cwd()) {
@@ -73,6 +93,10 @@ export function normalizeSettings(partial = {}) {
     settings.mediaDir = formatMediaDir(partial.mediaDir);
   }
 
+  if (Object.prototype.hasOwnProperty.call(partial, "contentDateField")) {
+    settings.contentDateField = normalizeContentDateField(partial.contentDateField);
+  }
+
   return settings;
 }
 
@@ -92,6 +116,12 @@ function parseSettingsLines(lines = []) {
     const mediaDirMatch = line.match(/^mediaDir=(.*)$/i);
     if (mediaDirMatch) {
       settings.mediaDir = formatMediaDir(mediaDirMatch[1]);
+      continue;
+    }
+
+    const contentDateFieldMatch = line.match(/^contentDateField=(.*)$/i);
+    if (contentDateFieldMatch) {
+      settings.contentDateField = normalizeContentDateField(contentDateFieldMatch[1]);
     }
   }
 
@@ -192,6 +222,7 @@ async function writeUserConfig(
       "[settings]",
       `images=${normalizedLegacy.images}`,
       `mediaDir=${normalizedLegacy.mediaDir}`,
+      `contentDateField=${normalizedLegacy.contentDateField}`,
       "",
     );
   }
@@ -202,6 +233,7 @@ async function writeUserConfig(
       `[settings:${projectKey}]`,
       `images=${normalized.images}`,
       `mediaDir=${normalized.mediaDir}`,
+      `contentDateField=${normalized.contentDateField}`,
       "",
     );
   }

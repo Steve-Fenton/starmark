@@ -205,6 +205,13 @@ body::before {
   pointer-events: none;
 }
 
+.settings-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .settings-field label {
   display: block;
   margin-bottom: 0.4rem;

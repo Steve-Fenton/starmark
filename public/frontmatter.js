@@ -596,10 +596,10 @@ export function getTodayDateString() {
   ].join("-");
 }
 
-export function updateModDateInFrontmatter(frontmatterText) {
+export function updateContentDateInFrontmatter(frontmatterText, fieldName = "modDate") {
   const trimmed = (frontmatterText ?? "").trim();
-  if (trimmed === "") {
-    return null;
+  if (trimmed === "" || !fieldName) {
+    return trimmed === "" ? null : normalizeFrontmatter(trimmed);
   }
 
   let data;
@@ -615,18 +615,18 @@ export function updateModDateInFrontmatter(frontmatterText) {
 
   const today = getTodayDateString();
 
-  if (Object.prototype.hasOwnProperty.call(data, "modDate")) {
-    data.modDate = today;
+  if (Object.prototype.hasOwnProperty.call(data, fieldName)) {
+    data[fieldName] = today;
     return normalizeFrontmatter(stringifyFrontmatter(data));
   }
 
   const entries = Object.entries(data);
   const pubDateIndex = entries.findIndex(([key]) => key === "pubDate");
   if (pubDateIndex !== -1) {
-    entries.splice(pubDateIndex + 1, 0, ["modDate", today]);
+    entries.splice(pubDateIndex + 1, 0, [fieldName, today]);
     data = Object.fromEntries(entries);
   } else {
-    data.modDate = today;
+    data[fieldName] = today;
   }
 
   return normalizeFrontmatter(stringifyFrontmatter(data));

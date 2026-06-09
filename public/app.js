@@ -4,13 +4,20 @@ import { createFrontmatterEditor } from "./frontmatter-editor.js";
 import {
   normalizeFrontmatter,
   prepareImportedFrontmatter,
-  updateModDateInFrontmatter,
+  updateContentDateInFrontmatter,
 } from "./frontmatter.js";
 import {
   prepareMarkdownBodyForEditor,
   prepareMarkdownBodyForSource,
 } from "./markdown-html.js";
-import { getImageMode, getSettings, loadSettings, onSettingsChange, saveSettings } from "./settings.js";
+import {
+  getContentDateField,
+  getImageMode,
+  getSettings,
+  loadSettings,
+  onSettingsChange,
+  saveSettings,
+} from "./settings.js";
 import { resolveImageToolId } from "./toolbar-image-tool.js";
 
 const folderInput = document.getElementById("folder-path");
@@ -41,6 +48,7 @@ const frontmatterEditor = createFrontmatterEditor(frontmatterEditorRoot, {
     }
   },
   getProjectPath: () => currentProjectPath,
+  getContentDateField,
 });
 const projectsSection = document.getElementById("projects-section");
 const projectList = document.getElementById("project-list");
@@ -53,6 +61,7 @@ const settingsDialogClose = document.getElementById("settings-dialog-close");
 const settingsForm = document.getElementById("settings-form");
 const settingImagesSelect = document.getElementById("setting-images");
 const settingMediaDirInput = document.getElementById("setting-media-dir");
+const settingContentDateFieldInput = document.getElementById("setting-content-date-field");
 const settingsProjectLabel = document.getElementById("settings-project");
 const settingsError = document.getElementById("settings-error");
 const topBar = document.querySelector(".top-bar");
@@ -1921,8 +1930,9 @@ async function saveCurrentFile() {
   const bodyChanged = savedEditSnapshot !== null && body !== savedEditSnapshot.body;
   let frontmatter = normalizeFrontmatter(frontmatterEditor.getValue());
 
-  if (bodyChanged && frontmatter) {
-    frontmatter = updateModDateInFrontmatter(frontmatter);
+  const contentDateField = getContentDateField();
+  if (bodyChanged && frontmatter && contentDateField) {
+    frontmatter = updateContentDateInFrontmatter(frontmatter, contentDateField);
     frontmatterEditor.setValue(frontmatter ?? "");
   }
 
@@ -3559,6 +3569,7 @@ settingsMenuBtn.innerHTML = icons.settings;
 function syncSettingsForm(settings) {
   settingImagesSelect.value = settings.images;
   settingMediaDirInput.value = settings.mediaDir;
+  settingContentDateFieldInput.value = settings.contentDateField;
 }
 
 function updateSettingsProjectContext() {
@@ -3566,6 +3577,7 @@ function updateSettingsProjectContext() {
   settingsForm.classList.toggle("is-disabled", !hasProject);
   settingImagesSelect.disabled = !hasProject;
   settingMediaDirInput.disabled = !hasProject;
+  settingContentDateFieldInput.disabled = !hasProject;
 
   if (!hasProject) {
     settingsProjectLabel.textContent = "Open a project to configure its settings.";
@@ -3653,6 +3665,25 @@ settingMediaDirInput.addEventListener("change", async () => {
 
   try {
     await saveSettings({ mediaDir: settingMediaDirInput.value }, currentProjectPath);
+    syncSettingsForm(getSettings());
+  } catch {
+    syncSettingsForm(getSettings());
+    showSettingsError("Could not save settings.");
+  }
+});
+
+settingContentDateFieldInput.addEventListener("change", async () => {
+  if (!currentProjectPath) {
+    return;
+  }
+
+  clearSettingsError();
+
+  try {
+    await saveSettings(
+      { contentDateField: settingContentDateFieldInput.value },
+      currentProjectPath,
+    );
     syncSettingsForm(getSettings());
   } catch {
     syncSettingsForm(getSettings());

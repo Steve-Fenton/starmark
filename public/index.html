@@ -94,6 +94,21 @@
             autocomplete="off"
           />
         </div>
+        <div class="settings-field">
+          <label for="setting-content-date-field">Content date field</label>
+          <input
+            id="setting-content-date-field"
+            name="contentDateField"
+            type="text"
+            value="modDate"
+            placeholder="modDate"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <p class="settings-hint">
+            Front matter field updated automatically when page content changes. Leave blank to disable.
+          </p>
+        </div>
         <p id="settings-error" class="settings-error" hidden></p>
       </form>
     </dialog>

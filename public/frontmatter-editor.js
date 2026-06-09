@@ -98,31 +98,38 @@ function isBannerImageSrcField(fieldPath) {
   );
 }
 
-function isDateField(fieldPath) {
-  const key = fieldPath[fieldPath.length - 1];
-  return key === "pubDate" || key === "modDate";
-}
-
 function isIsoDateString(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value));
 }
 
-function isLongTextField(type, fieldPath, stringValue) {
-  if (type !== "string") {
-    return false;
+export function createFrontmatterEditor(
+  root,
+  { onChange, getProjectPath, getContentDateField } = {},
+) {
+  function isDateField(fieldPath) {
+    const key = fieldPath[fieldPath.length - 1];
+    if (key === "pubDate") {
+      return true;
+    }
+
+    const contentDateField = getContentDateField?.();
+    return Boolean(contentDateField) && key === contentDateField;
   }
 
-  if (
-    isDateField(fieldPath) &&
-    (stringValue === "" || isIsoDateString(stringValue))
-  ) {
-    return false;
+  function isLongTextField(type, fieldPath, stringValue) {
+    if (type !== "string") {
+      return false;
+    }
+
+    if (
+      isDateField(fieldPath) &&
+      (stringValue === "" || isIsoDateString(stringValue))
+    ) {
+      return false;
+    }
+
+    return stringValue.length > LONG_TEXT_THRESHOLD || stringValue.includes("\n");
   }
-
-  return stringValue.length > LONG_TEXT_THRESHOLD || stringValue.includes("\n");
-}
-
-export function createFrontmatterEditor(root, { onChange, getProjectPath } = {}) {
   let data = {};
   let parseError = null;
   let rawFallback = "";

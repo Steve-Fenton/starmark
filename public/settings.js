@@ -1,6 +1,7 @@
 const DEFAULT_SETTINGS = {
   images: "accelerator",
   mediaDir: "public/img",
+  contentDateField: "modDate",
 };
 
 export function normalizeMediaDir(value) {
@@ -47,6 +48,10 @@ export function getImageMode() {
 
 export function getMediaDir() {
   return normalizeMediaDir(currentSettings.mediaDir);
+}
+
+export function getContentDateField() {
+  return currentSettings.contentDateField;
 }
 
 export function onSettingsChange(listener) {
