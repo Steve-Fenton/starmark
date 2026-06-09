@@ -184,6 +184,51 @@ function resolveProjectSubpath(projectPath, relativePath = "") {
   };
 }
 
+async function resolveMediaFilePath(projectPath, mediaPath) {
+  const normalized = String(mediaPath).replace(/^\/+/, "").replace(/\\/g, "/");
+  if (!normalized) {
+    return null;
+  }
+
+  const candidates = [normalized];
+  const settings = await readProjectSettings(projectPath);
+  const mediaDir = normalizeMediaDir(settings.mediaDir);
+
+  if (mediaDir) {
+    candidates.push(path.posix.join(mediaDir, normalized));
+  }
+
+  if (!normalized.startsWith("public/")) {
+    candidates.push(path.posix.join("public", normalized));
+  }
+
+  const seen = new Set();
+
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) {
+      continue;
+    }
+
+    seen.add(candidate);
+
+    const resolved = resolveProjectSubpath(projectPath, candidate);
+    if (!resolved) {
+      continue;
+    }
+
+    try {
+      const stat = await fs.stat(resolved.target);
+      if (stat.isFile()) {
+        return resolved;
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  return null;
+}
+
 async function getScanTargetsForProject(projectPath) {
   const settings = await readProjectSettings(projectPath);
   return resolveScanTargets(projectPath, settings.siteType);
@@ -1109,7 +1154,7 @@ app.get("/api/media/file", async (req, res) => {
   }
 
   const resolvedProject = path.resolve(projectPath);
-  const resolved = resolveProjectSubpath(resolvedProject, mediaPath);
+  const resolved = await resolveMediaFilePath(resolvedProject, mediaPath);
   if (!resolved) {
     return res.status(400).json({ error: "Invalid media path" });
   }

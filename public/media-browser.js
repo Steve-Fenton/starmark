@@ -448,7 +448,7 @@ export function createMediaDialog({
     }
 
     for (const image of data.images) {
-      const relativePath = image.webPath.replace(/^\//, "");
+      const projectRelativePath = image.dir ? `${image.dir}/${image.name}` : image.name;
       const displayName = isSearching
         ? getImageSearchLabel(image, data.currentDir)
         : image.name;
@@ -459,7 +459,7 @@ export function createMediaDialog({
 
       const preview = document.createElement("img");
       preview.className = "media-item-preview media-image-preview";
-      preview.src = getMediaFileUrl(relativePath);
+      preview.src = getMediaFileUrl(projectRelativePath);
       preview.alt = "";
       preview.loading = "lazy";
 
