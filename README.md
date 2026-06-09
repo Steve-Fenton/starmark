@@ -46,7 +46,7 @@ The folder opened by the media library and image insert tools when browsing for 
 
 Default: `public/img`
 
-You can enter a path relative to your project root, such as `public/blog/img`. Paths are normalised to sit under `public/`.
+You can enter a path relative to your project root, such as `public/blog/img` for Astro sites or `static` for Hugo sites.
 
 ### Content date field
 

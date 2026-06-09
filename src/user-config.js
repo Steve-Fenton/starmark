@@ -10,22 +10,14 @@ export const DEFAULT_SETTINGS = {
 const CONTENT_DATE_FIELD_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function normalizeMediaDir(value) {
-  let normalized = String(value ?? DEFAULT_SETTINGS.mediaDir)
+  return String(value ?? DEFAULT_SETTINGS.mediaDir)
     .trim()
-    .replace(/\\/g, "/");
-
-  if (normalized.startsWith("public/")) {
-    normalized = normalized.slice("public/".length);
-  } else if (normalized === "public") {
-    normalized = "";
-  }
-
-  return normalized.replace(/^\/+|\/+$/g, "");
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "");
 }
 
 export function formatMediaDir(value) {
-  const relative = normalizeMediaDir(value);
-  return relative ? `public/${relative}` : "public/";
+  return normalizeMediaDir(value);
 }
 
 export function normalizeContentDateField(value) {

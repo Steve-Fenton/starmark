@@ -23,6 +23,14 @@ Feature: User settings
     And the response JSON settings "mediaDir" should be "public/docs/img"
     And the response JSON settings "contentDateField" should be "updateDate"
 
+  Scenario: Media folder paths are stored relative to the project root
+    When I request PUT "/api/settings" with JSON:
+      """
+      {"project":"SAMPLE_PROJECT","settings":{"mediaDir":"hugo/static"}}
+      """
+    Then the response status should be 200
+    And the response JSON settings "mediaDir" should be "hugo/static"
+
   Scenario: A blank content date field disables auto-update
     When I request PUT "/api/settings" with JSON:
       """

@@ -64,6 +64,7 @@ const settingMediaDirInput = document.getElementById("setting-media-dir");
 const settingContentDateFieldInput = document.getElementById("setting-content-date-field");
 const settingsProjectLabel = document.getElementById("settings-project");
 const settingsError = document.getElementById("settings-error");
+const settingsSaveBtn = document.getElementById("settings-save-btn");
 const topBar = document.querySelector(".top-bar");
 const topBarTitleIcon = document.getElementById("top-bar-title-icon");
 const topBarSeparator = document.getElementById("top-bar-separator");
@@ -3591,6 +3592,7 @@ function updateSettingsProjectContext() {
   settingImagesSelect.disabled = !hasProject;
   settingMediaDirInput.disabled = !hasProject;
   settingContentDateFieldInput.disabled = !hasProject;
+  settingsSaveBtn.disabled = !hasProject;
 
   if (!hasProject) {
     settingsProjectLabel.textContent = "Open a project to configure its settings.";
@@ -3633,6 +3635,59 @@ function clearSettingsError() {
   settingsError.hidden = true;
 }
 
+function getSettingsFormValues() {
+  return {
+    images: settingImagesSelect.value,
+    mediaDir: settingMediaDirInput.value,
+    contentDateField: settingContentDateFieldInput.value,
+  };
+}
+
+function getPendingSettingsChanges() {
+  const settings = getSettings();
+  const values = getSettingsFormValues();
+  const partial = {};
+
+  if (values.images !== settings.images) {
+    partial.images = values.images;
+  }
+  if (values.mediaDir !== settings.mediaDir) {
+    partial.mediaDir = values.mediaDir;
+  }
+  if (values.contentDateField !== settings.contentDateField) {
+    partial.contentDateField = values.contentDateField;
+  }
+
+  return partial;
+}
+
+function isSettingsFormDirty() {
+  return Object.keys(getPendingSettingsChanges()).length > 0;
+}
+
+async function saveSettingsForm() {
+  if (!currentProjectPath) {
+    return;
+  }
+
+  const partial = getPendingSettingsChanges();
+  if (Object.keys(partial).length === 0) {
+    settingsDialog.close();
+    return;
+  }
+
+  clearSettingsError();
+
+  try {
+    await saveSettings(partial, currentProjectPath);
+    syncSettingsForm(getSettings());
+    settingsDialog.close();
+  } catch {
+    syncSettingsForm(getSettings());
+    showSettingsError("Could not save settings.");
+  }
+}
+
 settingsMenuBtn.addEventListener("click", async () => {
   if (currentProjectPath) {
     await loadSettings(currentProjectPath);
@@ -3644,68 +3699,11 @@ settingsMenuBtn.addEventListener("click", async () => {
   settingsDialog.showModal();
 });
 
-settingsDialogClose.addEventListener("click", () => {
-  settingsDialog.close();
-});
+attachDialogCloseGuard(settingsDialog, settingsDialogClose, isSettingsFormDirty);
 
-settingsDialog.addEventListener("click", (event) => {
-  if (event.target === settingsDialog) {
-    settingsDialog.close();
-  }
-});
-
-settingImagesSelect.addEventListener("change", async () => {
-  if (!currentProjectPath) {
-    return;
-  }
-
-  clearSettingsError();
-
-  try {
-    await saveSettings({ images: settingImagesSelect.value }, currentProjectPath);
-  } catch {
-    syncSettingsForm(getSettings());
-    showSettingsError("Could not save settings.");
-  }
-});
-
-settingMediaDirInput.addEventListener("change", async () => {
-  if (!currentProjectPath) {
-    return;
-  }
-
-  clearSettingsError();
-
-  try {
-    await saveSettings({ mediaDir: settingMediaDirInput.value }, currentProjectPath);
-    syncSettingsForm(getSettings());
-  } catch {
-    syncSettingsForm(getSettings());
-    showSettingsError("Could not save settings.");
-  }
-});
-
-settingContentDateFieldInput.addEventListener("change", async () => {
-  if (!currentProjectPath) {
-    return;
-  }
-
-  clearSettingsError();
-
-  try {
-    await saveSettings(
-      { contentDateField: settingContentDateFieldInput.value },
-      currentProjectPath,
-    );
-    syncSettingsForm(getSettings());
-  } catch {
-    syncSettingsForm(getSettings());
-    showSettingsError("Could not save settings.");
-  }
-});
-
-settingsForm.addEventListener("submit", (event) => {
+settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  await saveSettingsForm();
 });
 
 const imageLightbox = createImageLightbox();

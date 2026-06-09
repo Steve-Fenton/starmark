@@ -5,22 +5,14 @@ const DEFAULT_SETTINGS = {
 };
 
 export function normalizeMediaDir(value) {
-  let normalized = String(value ?? DEFAULT_SETTINGS.mediaDir)
+  return String(value ?? DEFAULT_SETTINGS.mediaDir)
     .trim()
-    .replace(/\\/g, "/");
-
-  if (normalized.startsWith("public/")) {
-    normalized = normalized.slice("public/".length);
-  } else if (normalized === "public") {
-    normalized = "";
-  }
-
-  return normalized.replace(/^\/+|\/+$/g, "");
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "");
 }
 
 export function formatMediaDir(value) {
-  const relative = normalizeMediaDir(value);
-  return relative ? `public/${relative}` : "public/";
+  return normalizeMediaDir(value);
 }
 
 let currentProjectPath = "";

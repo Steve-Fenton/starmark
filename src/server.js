@@ -12,6 +12,7 @@ import {
   saveProjects,
   saveProjectSettings,
   normalizeSettings,
+  normalizeMediaDir,
 } from "./user-config.js";
 
 const execFileAsync = promisify(execFile);
@@ -736,38 +737,42 @@ const IMAGE_EXTENSIONS = new Set([
   ".ico",
 ]);
 
-function resolvePublicSubpath(projectPath, relativePath = "") {
-  const publicDir = path.resolve(projectPath, "public");
-  const normalized = String(relativePath).replace(/^\/+/, "").replace(/\\/g, "/");
-  const target = path.resolve(publicDir, normalized || ".");
+function toWebPath(projectRelativePath, mediaRoot = "") {
+  const normalized = projectRelativePath.replace(/\\/g, "/");
+  const root = normalizeMediaDir(mediaRoot);
 
-  if (target !== publicDir && !target.startsWith(`${publicDir}${path.sep}`)) {
-    return null;
+  if (root) {
+    if (normalized === root) {
+      return "/";
+    }
+
+    const prefix = `${root}/`;
+    if (normalized.startsWith(prefix)) {
+      const relative = normalized.slice(prefix.length);
+      return relative ? `/${relative}` : "/";
+    }
   }
 
-  return {
-    publicDir,
-    target,
-    relativePath: normalized,
-  };
-}
+  if (normalized.startsWith("public/")) {
+    return `/${normalized.slice("public/".length)}`;
+  }
 
-function toWebPath(relativeToPublic) {
-  const normalized = relativeToPublic.replace(/\\/g, "/");
+  if (normalized.startsWith("static/")) {
+    return `/${normalized.slice("static/".length)}`;
+  }
+
   return normalized ? `/${normalized}` : "/";
 }
 
-async function listMediaDirectory(projectPath, relativePath = "img") {
-  const resolved = resolvePublicSubpath(projectPath, relativePath);
+async function listMediaDirectory(projectPath, relativePath = "public/img") {
+  const resolved = resolveProjectSubpath(projectPath, relativePath);
   if (!resolved) {
     return { error: "Invalid media path" };
   }
 
-  const { publicDir, target, relativePath: currentDir } = resolved;
-
-  if (!(await isDirectory(publicDir))) {
-    return { error: "This project has no public folder" };
-  }
+  const { target, relativePath: currentDir } = resolved;
+  const settings = await readProjectSettings(projectPath);
+  const mediaRoot = normalizeMediaDir(settings.mediaDir);
 
   if (!(await isDirectory(target))) {
     return { error: "Folder does not exist" };
@@ -806,7 +811,7 @@ async function listMediaDirectory(projectPath, relativePath = "img") {
     images.push({
       name: entry.name,
       dir: currentDir,
-      webPath: toWebPath(entryRelativePath),
+      webPath: toWebPath(entryRelativePath, mediaRoot),
     });
   }
 
@@ -830,7 +835,7 @@ function getMediaParentDir(currentDir) {
   return parentDir === "." ? "" : parentDir;
 }
 
-async function walkMediaSearch(dirPath, relativeDir, query, folders, images) {
+async function walkMediaSearch(dirPath, relativeDir, query, folders, images, mediaRoot = "") {
   let entries;
 
   try {
@@ -860,6 +865,7 @@ async function walkMediaSearch(dirPath, relativeDir, query, folders, images) {
         query,
         folders,
         images,
+        mediaRoot,
       );
       continue;
     }
@@ -873,23 +879,21 @@ async function walkMediaSearch(dirPath, relativeDir, query, folders, images) {
       images.push({
         name: entry.name,
         dir: relativeDir,
-        webPath: toWebPath(entryRelativePath),
+        webPath: toWebPath(entryRelativePath, mediaRoot),
       });
     }
   }
 }
 
 async function searchMediaImages(projectPath, relativePath, query) {
-  const resolved = resolvePublicSubpath(projectPath, relativePath);
+  const resolved = resolveProjectSubpath(projectPath, relativePath);
   if (!resolved) {
     return { error: "Invalid media path" };
   }
 
-  const { publicDir, target, relativePath: currentDir } = resolved;
-
-  if (!(await isDirectory(publicDir))) {
-    return { error: "This project has no public folder" };
-  }
+  const { target, relativePath: currentDir } = resolved;
+  const settings = await readProjectSettings(projectPath);
+  const mediaRoot = normalizeMediaDir(settings.mediaDir);
 
   if (!(await isDirectory(target))) {
     return { error: "Folder does not exist" };
@@ -902,7 +906,14 @@ async function searchMediaImages(projectPath, relativePath, query) {
 
   const folders = [];
   const images = [];
-  await walkMediaSearch(target, currentDir, normalizedQuery, folders, images);
+  await walkMediaSearch(
+    target,
+    currentDir,
+    normalizedQuery,
+    folders,
+    images,
+    mediaRoot,
+  );
   folders.sort((a, b) => a.name.localeCompare(b.name));
   images.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -933,7 +944,7 @@ app.get("/api/media", async (req, res) => {
     return res.status(404).json({ error: "Project does not exist or is not accessible" });
   }
 
-  const relativeDir = typeof dir === "string" ? dir : "img";
+  const relativeDir = typeof dir === "string" ? dir : "public/img";
   const searchQuery = typeof q === "string" ? q.trim() : "";
   const result = searchQuery
     ? await searchMediaImages(resolvedProject, relativeDir, searchQuery)
@@ -1010,17 +1021,13 @@ app.post("/api/media/folder", async (req, res) => {
     return res.status(404).json({ error: "Project does not exist or is not accessible" });
   }
 
-  const relativeDir = typeof dir === "string" ? dir : "img";
-  const resolved = resolvePublicSubpath(resolvedProject, relativeDir);
+  const relativeDir = typeof dir === "string" ? dir : "public/img";
+  const resolved = resolveProjectSubpath(resolvedProject, relativeDir);
   if (!resolved) {
     return res.status(400).json({ error: "Invalid media path" });
   }
 
-  const { publicDir, target, relativePath: currentDir } = resolved;
-
-  if (!(await isDirectory(publicDir))) {
-    return res.status(400).json({ error: "This project has no public folder" });
-  }
+  const { target, relativePath: currentDir } = resolved;
 
   if (!(await isDirectory(target))) {
     return res.status(400).json({ error: "Folder does not exist" });
@@ -1029,7 +1036,7 @@ app.post("/api/media/folder", async (req, res) => {
   const folderRelativePath = currentDir
     ? path.posix.join(currentDir, nameResult.name)
     : nameResult.name;
-  const folderResolved = resolvePublicSubpath(resolvedProject, folderRelativePath);
+  const folderResolved = resolveProjectSubpath(resolvedProject, folderRelativePath);
   if (!folderResolved) {
     return res.status(400).json({ error: "Invalid folder path" });
   }
@@ -1090,17 +1097,13 @@ app.post(
       return res.status(404).json({ error: "Project does not exist or is not accessible" });
     }
 
-    const relativeDir = typeof dir === "string" ? dir : "img";
-    const resolved = resolvePublicSubpath(resolvedProject, relativeDir);
+    const relativeDir = typeof dir === "string" ? dir : "public/img";
+    const resolved = resolveProjectSubpath(resolvedProject, relativeDir);
     if (!resolved) {
       return res.status(400).json({ error: "Invalid media path" });
     }
 
-    const { publicDir, target, relativePath: currentDir } = resolved;
-
-    if (!(await isDirectory(publicDir))) {
-      return res.status(400).json({ error: "This project has no public folder" });
-    }
+    const { target, relativePath: currentDir } = resolved;
 
     if (!(await isDirectory(target))) {
       return res.status(400).json({ error: "Folder does not exist" });
@@ -1137,7 +1140,7 @@ app.get("/api/media/file", async (req, res) => {
   }
 
   const resolvedProject = path.resolve(projectPath);
-  const resolved = resolvePublicSubpath(resolvedProject, mediaPath);
+  const resolved = resolveProjectSubpath(resolvedProject, mediaPath);
   if (!resolved) {
     return res.status(400).json({ error: "Invalid media path" });
   }
