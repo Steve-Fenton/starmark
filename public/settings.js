@@ -1,4 +1,5 @@
 const DEFAULT_SETTINGS = {
+  siteType: "astro-accelerator",
   images: "accelerator",
   mediaDir: "public/img",
   contentDateField: "modDate",
@@ -32,6 +33,10 @@ export function getSettings() {
 
 export function getSettingsProjectPath() {
   return currentProjectPath;
+}
+
+export function getSiteType() {
+  return currentSettings.siteType;
 }
 
 export function getImageMode() {

@@ -34,6 +34,11 @@ Given("the sample Astro project fixture", function () {
   assert.ok(this.sampleProjectPath, "Sample project path is configured");
 });
 
+Given("the sample Hugo project fixture", function () {
+  this.sampleProjectPath = path.join(path.dirname(this.sampleProjectPath), "sample-hugo");
+  assert.ok(this.sampleProjectPath, "Sample Hugo project path is configured");
+});
+
 Given('the markdown file {string}', async function (relativePath) {
   this.currentFilePath = relativePath;
   this.currentFileAbsolutePath = path.join(this.sampleProjectPath, relativePath);
@@ -59,6 +64,23 @@ When("I scan the sample project", async function () {
   if (this.lastResponse.status === 200) {
     this.scannedFiles = this.lastResponse.body.files ?? [];
   }
+});
+
+When("I scan the sample Hugo project", async function () {
+  this.lastResponse = await this.agent
+    .post("/api/scan")
+    .send({ path: this.sampleProjectPath });
+
+  if (this.lastResponse.status === 200) {
+    this.scannedFiles = this.lastResponse.body.files ?? [];
+  }
+});
+
+When('I set the project site type to {string}', async function (siteType) {
+  this.lastResponse = await this.agent.put("/api/settings").send({
+    project: this.sampleProjectPath,
+    settings: { siteType },
+  });
 });
 
 When('I create folder {string} in {string}', async function (name, parentPath) {
@@ -143,6 +165,14 @@ Then("the scan results should include {string}", function (relativePath) {
   assert.ok(
     paths.includes(relativePath),
     `Expected scan results to include "${relativePath}". Found: ${paths.join(", ")}`,
+  );
+});
+
+Then("the scan results should not include {string}", function (relativePath) {
+  const paths = this.scannedFiles.map((file) => file.relativePath);
+  assert.ok(
+    !paths.includes(relativePath),
+    `Expected scan results not to include "${relativePath}". Found: ${paths.join(", ")}`,
   );
 });
 

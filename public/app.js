@@ -59,6 +59,7 @@ const settingsMenuBtn = document.getElementById("settings-menu-btn");
 const settingsDialog = document.getElementById("settings-dialog");
 const settingsDialogClose = document.getElementById("settings-dialog-close");
 const settingsForm = document.getElementById("settings-form");
+const settingSiteTypeSelect = document.getElementById("setting-site-type");
 const settingImagesSelect = document.getElementById("setting-images");
 const settingMediaDirInput = document.getElementById("setting-media-dir");
 const settingContentDateFieldInput = document.getElementById("setting-content-date-field");
@@ -93,12 +94,6 @@ let imageToolMountVersion = 0;
 
 const HISTORY_DEBOUNCE_MS = 400;
 const MAX_EDITOR_HISTORY = 100;
-
-const SOURCE_ROOTS = {
-  content: "src/content",
-  pages: "src/pages",
-  hugo: "content",
-};
 
 const HEADING_LINE_RE = /^(#{1,6})\s+(.*)$/;
 const CODE_FENCE_RE = /^```/;
@@ -1154,37 +1149,30 @@ function countTreeContents(nodes) {
 function resolveTreePath(relativePath, sourceHint) {
   const normalized = String(relativePath).replace(/\\/g, "/").replace(/^\/+/, "");
 
-  if (normalized === "src/content" || normalized.startsWith("src/content/")) {
-    return {
-      source: sourceHint ?? "content",
-      rootPath: SOURCE_ROOTS.content,
-      segments:
-        normalized === "src/content"
-          ? []
-          : normalized.slice(`${SOURCE_ROOTS.content}/`.length).split("/").filter(Boolean),
-    };
-  }
+  for (const target of lastScanTargets) {
+    const prefix = String(target.pathPrefix ?? "").replace(/\\/g, "/");
 
-  if (normalized === "src/pages" || normalized.startsWith("src/pages/")) {
-    return {
-      source: sourceHint ?? "pages",
-      rootPath: SOURCE_ROOTS.pages,
-      segments:
-        normalized === "src/pages"
-          ? []
-          : normalized.slice(`${SOURCE_ROOTS.pages}/`.length).split("/").filter(Boolean),
-    };
-  }
+    if (!prefix) {
+      if (target.source === "project") {
+        return {
+          source: sourceHint ?? "project",
+          rootPath: "",
+          segments: normalized.split("/").filter(Boolean),
+        };
+      }
+      continue;
+    }
 
-  if (normalized === "content" || normalized.startsWith("content/")) {
-    return {
-      source: sourceHint ?? "hugo",
-      rootPath: SOURCE_ROOTS.hugo,
-      segments:
-        normalized === "content"
-          ? []
-          : normalized.slice(`${SOURCE_ROOTS.hugo}/`.length).split("/").filter(Boolean),
-    };
+    if (normalized === prefix || normalized.startsWith(`${prefix}/`)) {
+      return {
+        source: sourceHint ?? target.source,
+        rootPath: prefix,
+        segments:
+          normalized === prefix
+            ? []
+            : normalized.slice(`${prefix}/`.length).split("/").filter(Boolean),
+      };
+    }
   }
 
   return {
@@ -2260,13 +2248,13 @@ async function browseFolder() {
 }
 
 function formatScanInfo(scanTargets) {
-  const astroTargets = scanTargets.filter((target) => target.source !== "project");
+  const contentTargets = scanTargets.filter((target) => target.source !== "project");
 
-  if (astroTargets.length === 0) {
-    return "No src/content/, src/pages/, or content/ found — scanning project root";
+  if (contentTargets.length === 0) {
+    return "No configured content folders found — scanning project root";
   }
 
-  const labels = astroTargets.map((target) => `${target.pathPrefix}/`);
+  const labels = contentTargets.map((target) => `${target.pathPrefix}/`);
   return `Scanning ${labels.join(" and ")}`;
 }
 
@@ -3581,6 +3569,7 @@ projectsDialog.addEventListener("click", (event) => {
 settingsMenuBtn.innerHTML = icons.settings;
 
 function syncSettingsForm(settings) {
+  settingSiteTypeSelect.value = settings.siteType;
   settingImagesSelect.value = settings.images;
   settingMediaDirInput.value = settings.mediaDir;
   settingContentDateFieldInput.value = settings.contentDateField;
@@ -3589,6 +3578,7 @@ function syncSettingsForm(settings) {
 function updateSettingsProjectContext() {
   const hasProject = Boolean(currentProjectPath);
   settingsForm.classList.toggle("is-disabled", !hasProject);
+  settingSiteTypeSelect.disabled = !hasProject;
   settingImagesSelect.disabled = !hasProject;
   settingMediaDirInput.disabled = !hasProject;
   settingContentDateFieldInput.disabled = !hasProject;
@@ -3637,6 +3627,7 @@ function clearSettingsError() {
 
 function getSettingsFormValues() {
   return {
+    siteType: settingSiteTypeSelect.value,
     images: settingImagesSelect.value,
     mediaDir: settingMediaDirInput.value,
     contentDateField: settingContentDateFieldInput.value,
@@ -3648,6 +3639,9 @@ function getPendingSettingsChanges() {
   const values = getSettingsFormValues();
   const partial = {};
 
+  if (values.siteType !== settings.siteType) {
+    partial.siteType = values.siteType;
+  }
   if (values.images !== settings.images) {
     partial.images = values.images;
   }
@@ -3670,6 +3664,7 @@ async function saveSettingsForm() {
     return;
   }
 
+  const previousSiteType = getSettings().siteType;
   const partial = getPendingSettingsChanges();
   if (Object.keys(partial).length === 0) {
     settingsDialog.close();
@@ -3682,6 +3677,10 @@ async function saveSettingsForm() {
     await saveSettings(partial, currentProjectPath);
     syncSettingsForm(getSettings());
     settingsDialog.close();
+
+    if (partial.siteType && partial.siteType !== previousSiteType) {
+      await refreshScan();
+    }
   } catch {
     syncSettingsForm(getSettings());
     showSettingsError("Could not save settings.");

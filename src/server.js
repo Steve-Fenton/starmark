@@ -5,6 +5,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { buildInitialFileContent } from "./content-config.js";
+import { listSiteTypes, resolveScanTargets } from "./site-strategy.js";
 import {
   readProjectSettings,
   readUserConfig,
@@ -183,6 +184,11 @@ function resolveProjectSubpath(projectPath, relativePath = "") {
   };
 }
 
+async function getScanTargetsForProject(projectPath) {
+  const settings = await readProjectSettings(projectPath);
+  return resolveScanTargets(projectPath, settings.siteType);
+}
+
 function normalizeRelativePath(relativePath) {
   return String(relativePath).replace(/\\/g, "/").replace(/^\/+/, "");
 }
@@ -241,47 +247,6 @@ function validateEntryName(name) {
   }
 
   return { name: trimmed };
-}
-
-async function resolveScanTargets(projectPath) {
-  const targets = [];
-  const contentDir = path.join(projectPath, "src", "content");
-  const pagesDir = path.join(projectPath, "src", "pages");
-  const hugoContentDir = path.join(projectPath, "content");
-
-  if (await isDirectory(contentDir)) {
-    targets.push({
-      source: "content",
-      scanRoot: contentDir,
-      pathPrefix: "src/content",
-    });
-  }
-
-  if (await isDirectory(pagesDir)) {
-    targets.push({
-      source: "pages",
-      scanRoot: pagesDir,
-      pathPrefix: "src/pages",
-    });
-  }
-
-  if (await isDirectory(hugoContentDir)) {
-    targets.push({
-      source: "hugo",
-      scanRoot: hugoContentDir,
-      pathPrefix: "content",
-    });
-  }
-
-  if (targets.length === 0) {
-    targets.push({
-      source: "project",
-      scanRoot: projectPath,
-      pathPrefix: "",
-    });
-  }
-
-  return targets;
 }
 
 const SOURCE_ORDER = { content: 0, pages: 1, hugo: 2, project: 3 };
@@ -380,6 +345,10 @@ app.delete("/api/projects", async (req, res) => {
   res.json({ projects });
 });
 
+app.get("/api/site-types", (_req, res) => {
+  res.json({ siteTypes: listSiteTypes() });
+});
+
 app.get("/api/settings", async (req, res) => {
   const { project: projectPath } = req.query;
 
@@ -447,7 +416,7 @@ app.post("/api/scan", async (req, res) => {
     return res.status(400).json({ error: "Folder does not exist or is not accessible" });
   }
 
-  const scanTargets = await resolveScanTargets(resolved);
+  const scanTargets = await getScanTargetsForProject(resolved);
   const fileGroups = await Promise.all(
     scanTargets.map(async (target) => ({
       ...target,
@@ -524,7 +493,7 @@ app.post("/api/entry", async (req, res) => {
     return res.status(404).json({ error: "Parent folder does not exist or is not accessible" });
   }
 
-  const scanTargets = await resolveScanTargets(resolvedProject);
+  const scanTargets = await getScanTargetsForProject(resolvedProject);
   if (!isPathUnderScanTargets(normalizedParentPath, scanTargets)) {
     return res.status(400).json({ error: "Parent path is outside the project content area" });
   }
@@ -621,7 +590,7 @@ app.delete("/api/entry", async (req, res) => {
     return res.status(400).json({ error: "Invalid path" });
   }
 
-  const scanTargets = await resolveScanTargets(resolvedProject);
+  const scanTargets = await getScanTargetsForProject(resolvedProject);
   if (!isPathUnderScanTargets(normalizedRelativePath, scanTargets)) {
     return res.status(400).json({ error: "Path is outside the project content area" });
   }

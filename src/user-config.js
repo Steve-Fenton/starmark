@@ -1,7 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
+import { DEFAULT_SITE_TYPE, normalizeSiteType } from "./site-strategy.js";
 
 export const DEFAULT_SETTINGS = {
+  siteType: DEFAULT_SITE_TYPE,
   images: "accelerator",
   mediaDir: "public/img",
   contentDateField: "modDate",
@@ -78,6 +80,10 @@ function parseIniSections(text) {
 export function normalizeSettings(partial = {}) {
   const settings = { ...DEFAULT_SETTINGS };
 
+  if (Object.prototype.hasOwnProperty.call(partial, "siteType")) {
+    settings.siteType = normalizeSiteType(partial.siteType);
+  }
+
   if (Object.prototype.hasOwnProperty.call(partial, "images")) {
     const value = String(partial.images).trim().toLowerCase();
     if (value === "accelerator" || value === "markdown") {
@@ -100,6 +106,12 @@ function parseSettingsLines(lines = []) {
   const settings = { ...DEFAULT_SETTINGS };
 
   for (const line of lines) {
+    const siteTypeMatch = line.match(/^siteType=(.+)$/i);
+    if (siteTypeMatch) {
+      settings.siteType = normalizeSiteType(siteTypeMatch[1]);
+      continue;
+    }
+
     const imagesMatch = line.match(/^images=(.+)$/i);
     if (imagesMatch) {
       const value = imagesMatch[1].trim().toLowerCase();
@@ -210,6 +222,7 @@ function formatProjectIni(settings) {
   const normalized = normalizeSettings(settings);
   return [
     "[settings]",
+    `siteType=${normalized.siteType}`,
     `images=${normalized.images}`,
     `mediaDir=${normalized.mediaDir}`,
     `contentDateField=${normalized.contentDateField}`,
@@ -246,6 +259,7 @@ async function writeUserConfig(
     const normalizedLegacy = normalizeSettings(legacySettings);
     lines.push(
       "[settings]",
+      `siteType=${normalizedLegacy.siteType}`,
       `images=${normalizedLegacy.images}`,
       `mediaDir=${normalizedLegacy.mediaDir}`,
       `contentDateField=${normalizedLegacy.contentDateField}`,
@@ -257,6 +271,7 @@ async function writeUserConfig(
     const normalized = normalizeSettings(projectSettings[projectKey]);
     lines.push(
       `[settings:${projectKey}]`,
+      `siteType=${normalized.siteType}`,
       `images=${normalized.images}`,
       `mediaDir=${normalized.mediaDir}`,
       `contentDateField=${normalized.contentDateField}`,

@@ -76,6 +76,17 @@
       <form id="settings-form" class="settings-form">
         <p id="settings-project" class="settings-project"></p>
         <div class="settings-field">
+          <label for="setting-site-type">Site type</label>
+          <select id="setting-site-type" name="siteType">
+            <option value="astro-accelerator">Astro Accelerator</option>
+            <option value="astro">Astro</option>
+            <option value="hugo">Hugo</option>
+          </select>
+          <p class="settings-hint">
+            Controls where starmark looks for markdown content in your project.
+          </p>
+        </div>
+        <div class="settings-field">
           <label for="setting-images">Images</label>
           <select id="setting-images" name="images">
             <option value="accelerator">Accelerator</option>

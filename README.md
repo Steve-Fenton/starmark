@@ -1,6 +1,6 @@
 # starmark
 
-*starmark* is a local web-based CMS for your [Astro](https://astro.build) site. It has been designed to work with [Asto Accelerator](https://astro.stevefenton.co.uk).
+*starmark* is a local web-based CMS for your [Astro](https://astro.build) or [Hugo](https://gohugo.io) site. It has been designed to work with [Astro Accelerator](https://astro.stevefenton.co.uk), but also supports standard Astro and Hugo projects.
 
 With *starmark* you get:
 
@@ -9,7 +9,7 @@ With *starmark* you get:
 - Frontmatter editing
 - Media library and image insertion
 
-Browse and edit markdown content in local Astro sites.
+Browse and edit markdown content in local Astro and Hugo sites.
 
 Starmark runs a small local web app that scans an Astro project for `.md` and `.mdx` files, lets you browse them in a file tree, and edit content in the browser.
 
@@ -33,7 +33,17 @@ Visit the URL and go edit. All the changes will be in your changes tab ready for
 
 Open the settings dialog from the top bar while a project is loaded. Settings are stored per project in `.starmark/project.ini` inside each project folder. Your recent project list is kept locally in `.starmark/user.ini` where you run *starmark*.
 
-You can commit `.starmark/project.ini` to share image mode, media folder, and content date field settings with your team.
+You can commit `.starmark/project.ini` to share site type, image mode, media folder, and content date field settings with your team.
+
+### Site type
+
+Controls where starmark looks for markdown content.
+
+- **Astro Accelerator** (default) — scans `src/content` and `src/pages`.
+- **Astro** — scans `src/content` and `src/pages`.
+- **Hugo** — scans `hugo/content`.
+
+Changing site type rescans the project using the new content folders.
 
 ### Images
 
