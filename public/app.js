@@ -956,6 +956,33 @@ function formatFileCount(count, total = count) {
   return `${countLabel} of ${totalLabel}`;
 }
 
+function extractAlphaWords(text) {
+  const words = text.match(/[a-zA-Z]+/g);
+  return words ? words.map((word) => word.toLowerCase()) : [];
+}
+
+function matchesSearch(haystack, query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const normalizedHaystack = haystack.toLowerCase();
+  if (normalizedHaystack.includes(normalizedQuery)) {
+    return true;
+  }
+
+  const queryWords = extractAlphaWords(normalizedQuery);
+  if (queryWords.length === 0) {
+    return false;
+  }
+
+  const haystackWords = extractAlphaWords(normalizedHaystack);
+  return queryWords.every((queryWord) =>
+    haystackWords.some((haystackWord) => haystackWord.includes(queryWord)),
+  );
+}
+
 function filterFiles(files, query) {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
@@ -968,11 +995,9 @@ function filterFiles(files, query) {
       file.relativePath,
       file.source,
       file.extension,
-    ]
-      .join(" ")
-      .toLowerCase();
+    ].join(" ");
 
-    return haystack.includes(normalizedQuery);
+    return matchesSearch(haystack, normalizedQuery);
   });
 }
 
@@ -984,7 +1009,7 @@ function getDirectoriesForFileTree(files, directories, query) {
 
   const relevant = new Set(
     directories.filter((directoryPath) =>
-      directoryPath.toLowerCase().includes(normalizedQuery),
+      matchesSearch(directoryPath, normalizedQuery),
     ),
   );
 
