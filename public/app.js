@@ -1,7 +1,11 @@
 import { attachDialogCloseGuard, makeGuardedAction } from "./confirm-discard.js";
 import { icons } from "./icons.js";
 import { createFrontmatterEditor } from "./frontmatter-editor.js";
-import { normalizeFrontmatter, prepareImportedFrontmatter } from "./frontmatter.js";
+import {
+  normalizeFrontmatter,
+  prepareImportedFrontmatter,
+  updateModDateInFrontmatter,
+} from "./frontmatter.js";
 import {
   prepareMarkdownBodyForEditor,
   prepareMarkdownBodyForSource,
@@ -1913,7 +1917,16 @@ async function saveCurrentFile() {
   }
 
   flushEditorHistory();
-  currentEditFrontmatter = normalizeFrontmatter(frontmatterEditor.getValue());
+  const body = prepareMarkdownBodyForSource(getEditorContent());
+  const bodyChanged = savedEditSnapshot !== null && body !== savedEditSnapshot.body;
+  let frontmatter = normalizeFrontmatter(frontmatterEditor.getValue());
+
+  if (bodyChanged && frontmatter) {
+    frontmatter = updateModDateInFrontmatter(frontmatter);
+    frontmatterEditor.setValue(frontmatter ?? "");
+  }
+
+  currentEditFrontmatter = frontmatter;
 
   isSavingFile = true;
   setSaveButtonState({ label: "Saving…", disabled: true });

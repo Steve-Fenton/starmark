@@ -596,6 +596,42 @@ export function getTodayDateString() {
   ].join("-");
 }
 
+export function updateModDateInFrontmatter(frontmatterText) {
+  const trimmed = (frontmatterText ?? "").trim();
+  if (trimmed === "") {
+    return null;
+  }
+
+  let data;
+  try {
+    data = parseFrontmatter(trimmed);
+  } catch {
+    return normalizeFrontmatter(trimmed);
+  }
+
+  if (!isPlainObject(data)) {
+    return normalizeFrontmatter(trimmed);
+  }
+
+  const today = getTodayDateString();
+
+  if (Object.prototype.hasOwnProperty.call(data, "modDate")) {
+    data.modDate = today;
+    return normalizeFrontmatter(stringifyFrontmatter(data));
+  }
+
+  const entries = Object.entries(data);
+  const pubDateIndex = entries.findIndex(([key]) => key === "pubDate");
+  if (pubDateIndex !== -1) {
+    entries.splice(pubDateIndex + 1, 0, ["modDate", today]);
+    data = Object.fromEntries(entries);
+  } else {
+    data.modDate = today;
+  }
+
+  return normalizeFrontmatter(stringifyFrontmatter(data));
+}
+
 export function prepareImportedFrontmatter(frontmatterText) {
   const trimmed = (frontmatterText ?? "").trim();
   if (trimmed === "") {
