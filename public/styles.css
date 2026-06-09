@@ -1050,9 +1050,18 @@ details[open] > .tree-folder-header .tree-folder-chevron {
   width: 100%;
 }
 
+.frontmatter-scalar--multiline {
+  align-items: start;
+}
+
 .frontmatter-scalar .frontmatter-value-input {
   flex: 1;
   min-width: 0;
+}
+
+.frontmatter-scalar textarea.frontmatter-value-input {
+  resize: vertical;
+  min-height: 4.5rem;
 }
 
 .frontmatter-media-btn {

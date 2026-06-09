@@ -456,6 +456,7 @@ function renderFieldRow(
         onValueChange,
         fieldPath,
         mediaPickerContext,
+        onRefresh,
       ),
     );
     row.append(keyInput, typeSelect, valueHost, removeButton);
@@ -541,6 +542,7 @@ function renderValueEditor(
     onValueChange,
     fieldPath,
     mediaPickerContext,
+    onRefresh,
   );
 }
 
@@ -552,6 +554,7 @@ function renderScalarEditor(
   onValueChange,
   fieldPath = [],
   mediaPickerContext = null,
+  onRefresh = null,
 ) {
   const wrapper = document.createElement("div");
   wrapper.className = "frontmatter-scalar";
@@ -580,25 +583,47 @@ function renderScalarEditor(
     type === "string" &&
     mediaPickerContext?.isDateField?.(fieldPath) &&
     (stringValue === "" || isIsoDateString(stringValue));
+  const useMultilineInput =
+    type === "string" &&
+    !useDateInput &&
+    mediaPickerContext?.isLongTextField?.(type, fieldPath, stringValue);
 
-  const input = document.createElement("input");
-  input.type = useDateInput ? "date" : type === "number" ? "number" : "text";
-  input.className = "frontmatter-value-input";
-  input.value = stringValue;
-  input.placeholder = type === "null" ? "null" : useDateInput ? "YYYY-MM-DD" : "value";
-  input.spellcheck = false;
+  function getStoredStringValue() {
+    const stored = parentContainer[parentKey];
+    if (type === "null") {
+      return "";
+    }
 
-  if (useDateInput) {
-    input.setAttribute("aria-label", `${fieldPath[fieldPath.length - 1]} date`);
+    if (stored === null || stored === undefined) {
+      return "";
+    }
+
+    return String(stored);
   }
 
-  input.addEventListener("input", () => {
-    parentContainer[parentKey] = coerceScalar(type, input.value);
+  const valueInput = document.createElement(useMultilineInput ? "textarea" : "input");
+  if (!useMultilineInput) {
+    valueInput.type = useDateInput ? "date" : type === "number" ? "number" : "text";
+  } else {
+    valueInput.rows = Math.min(12, Math.max(3, stringValue.split("\n").length + 1));
+    wrapper.classList.add("frontmatter-scalar--multiline");
+  }
+  valueInput.className = "frontmatter-value-input";
+  valueInput.value = stringValue;
+  valueInput.placeholder = type === "null" ? "null" : useDateInput ? "YYYY-MM-DD" : "value";
+  valueInput.spellcheck = type === "string";
+
+  if (useDateInput) {
+    valueInput.setAttribute("aria-label", `${fieldPath[fieldPath.length - 1]} date`);
+  }
+
+  valueInput.addEventListener("input", () => {
+    parentContainer[parentKey] = coerceScalar(type, valueInput.value);
     updateLongTextButtonVisibility();
     onValueChange();
   });
 
-  wrapper.appendChild(input);
+  wrapper.appendChild(valueInput);
 
   const longTextBtn = document.createElement("button");
   longTextBtn.type = "button";
@@ -609,19 +634,26 @@ function renderScalarEditor(
   longTextBtn.hidden = true;
 
   function updateLongTextButtonVisibility() {
-    longTextBtn.hidden = !mediaPickerContext?.isLongTextField?.(type, fieldPath, input.value);
+    longTextBtn.hidden = !mediaPickerContext?.isLongTextField?.(
+      type,
+      fieldPath,
+      getStoredStringValue(),
+    );
   }
 
   longTextBtn.addEventListener("click", () => {
     const fieldLabel = fieldPath[fieldPath.length - 1] ?? "field";
     longTextDialog.open({
       title: `Edit ${fieldLabel}`,
-      value: input.value,
+      value: getStoredStringValue(),
       save(nextValue) {
-        input.value = nextValue;
         parentContainer[parentKey] = nextValue;
+        valueInput.value = nextValue;
         updateLongTextButtonVisibility();
         onValueChange();
+        if (nextValue.includes("\n") && !useMultilineInput) {
+          onRefresh?.();
+        }
       },
     });
   });
@@ -642,7 +674,7 @@ function renderScalarEditor(
     pickButton.title = "Choose image";
     pickButton.addEventListener("click", () => {
       mediaPickerContext.setTarget((webPath) => {
-        input.value = webPath;
+        valueInput.value = webPath;
         parentContainer[parentKey] = webPath;
         onValueChange();
       });
@@ -788,6 +820,7 @@ function renderArrayItemRow(
         onValueChange,
         [...fieldPath, String(index)],
         mediaPickerContext,
+        onRefresh,
       ),
     );
     row.append(marker, typeSelect, valueHost, removeButton);
