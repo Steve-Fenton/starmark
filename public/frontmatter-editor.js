@@ -106,30 +106,6 @@ export function createFrontmatterEditor(
   root,
   { onChange, getProjectPath, getContentDateField } = {},
 ) {
-  function isDateField(fieldPath) {
-    const key = fieldPath[fieldPath.length - 1];
-    if (key === "pubDate") {
-      return true;
-    }
-
-    const contentDateField = getContentDateField?.();
-    return Boolean(contentDateField) && key === contentDateField;
-  }
-
-  function isLongTextField(type, fieldPath, stringValue) {
-    if (type !== "string") {
-      return false;
-    }
-
-    if (
-      isDateField(fieldPath) &&
-      (stringValue === "" || isIsoDateString(stringValue))
-    ) {
-      return false;
-    }
-
-    return stringValue.length > LONG_TEXT_THRESHOLD || stringValue.includes("\n");
-  }
   let data = {};
   let parseError = null;
   let rawFallback = "";
@@ -145,6 +121,29 @@ export function createFrontmatterEditor(
     openMediaPicker: null,
     setTarget(callback) {
       mediaPickerTarget = callback;
+    },
+    isDateField(fieldPath) {
+      const key = fieldPath[fieldPath.length - 1];
+      if (key === "pubDate") {
+        return true;
+      }
+
+      const contentDateField = getContentDateField?.();
+      return Boolean(contentDateField) && key === contentDateField;
+    },
+    isLongTextField(type, fieldPath, stringValue) {
+      if (type !== "string") {
+        return false;
+      }
+
+      if (
+        this.isDateField(fieldPath) &&
+        (stringValue === "" || isIsoDateString(stringValue))
+      ) {
+        return false;
+      }
+
+      return stringValue.length > LONG_TEXT_THRESHOLD || stringValue.includes("\n");
     },
   };
 
@@ -204,7 +203,8 @@ export function createFrontmatterEditor(
       parseError = null;
       rawFallback = trimmed;
     } catch (error) {
-      parseError = error instanceof Error ? error.message : "Could not parse frontmatter";
+      const message = error instanceof Error ? error.message : "Invalid YAML";
+      parseError = `Could not parse frontmatter: ${message}`;
       rawFallback = trimmed;
       data = {};
     }
@@ -240,8 +240,9 @@ export function createFrontmatterEditor(
       render();
     } catch (error) {
       if (!parseError) {
-        parseError =
+        const message =
           error instanceof Error ? error.message : "Could not render frontmatter";
+        parseError = `Could not render frontmatter: ${message}`;
       }
 
       container.replaceChildren();
@@ -261,7 +262,7 @@ export function createFrontmatterEditor(
   function renderParseError() {
     const banner = document.createElement("div");
     banner.className = "frontmatter-form-error";
-    banner.textContent = `Could not parse frontmatter: ${parseError}. Edit the raw YAML below.`;
+    banner.textContent = `${parseError}. Edit the raw YAML below.`;
     return banner;
   }
 
@@ -577,7 +578,7 @@ function renderScalarEditor(
     type === "null" ? "" : value === null || value === undefined ? "" : String(value);
   const useDateInput =
     type === "string" &&
-    isDateField(fieldPath) &&
+    mediaPickerContext?.isDateField?.(fieldPath) &&
     (stringValue === "" || isIsoDateString(stringValue));
 
   const input = document.createElement("input");
@@ -608,7 +609,7 @@ function renderScalarEditor(
   longTextBtn.hidden = true;
 
   function updateLongTextButtonVisibility() {
-    longTextBtn.hidden = !isLongTextField(type, fieldPath, input.value);
+    longTextBtn.hidden = !mediaPickerContext?.isLongTextField?.(type, fieldPath, input.value);
   }
 
   longTextBtn.addEventListener("click", () => {
