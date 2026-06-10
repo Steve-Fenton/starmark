@@ -3084,15 +3084,27 @@ function createFrontmatterSourceDialog() {
     </div>
     <div class="frontmatter-source-body">
       <p class="frontmatter-source-hint">Choose a markdown file to copy its frontmatter.</p>
+      <div class="search-box">
+        <input
+          type="search"
+          class="frontmatter-source-search"
+          placeholder="Filter files…"
+          spellcheck="false"
+          aria-label="Filter files"
+        />
+      </div>
       <p class="frontmatter-source-error" hidden></p>
       <ul class="frontmatter-source-tree file-tree"></ul>
     </div>
   `;
 
   const closeBtn = dialog.querySelector(".frontmatter-source-dialog-close");
+  const searchInput = dialog.querySelector(".frontmatter-source-search");
   const treeRoot = dialog.querySelector(".frontmatter-source-tree");
   const errorEl = dialog.querySelector(".frontmatter-source-error");
   let onSelect = null;
+  let pickerParentPath = "";
+  let pickerNewPageName = "";
 
   function clearDialogError() {
     errorEl.hidden = true;
@@ -3126,9 +3138,9 @@ function createFrontmatterSourceDialog() {
     return item;
   }
 
-  function appendPickerChildren(container, node, depth, expandPaths, pickerContext) {
+  function appendPickerChildren(container, node, depth, expandPaths, pickerContext, { isSearching = false } = {}) {
     for (const child of node.children) {
-      container.append(createPickerRow(child, depth, expandPaths, pickerContext));
+      container.append(createPickerRow(child, depth, expandPaths, pickerContext, { isSearching }));
     }
 
     if (pickerContext.newPageName && node.path === pickerContext.parentPath) {
@@ -3136,13 +3148,13 @@ function createFrontmatterSourceDialog() {
     }
   }
 
-  function createPickerFolderRow(node, depth, expandPaths, pickerContext) {
+  function createPickerFolderRow(node, depth, expandPaths, pickerContext, { isSearching = false } = {}) {
     const item = document.createElement("li");
     item.className = "tree-folder frontmatter-source-folder";
     item.style.setProperty("--depth", depth);
 
     const details = document.createElement("details");
-    details.open = expandPaths.has(node.path);
+    details.open = isSearching || expandPaths.has(node.path);
 
     if (node.path === pickerContext.parentPath && !pickerContext.newPageName) {
       item.dataset.parentTarget = "true";
@@ -3175,7 +3187,7 @@ function createFrontmatterSourceDialog() {
     if (node.children.length > 0 || (pickerContext.newPageName && node.path === pickerContext.parentPath)) {
       const children = document.createElement("ul");
       children.className = "tree-children";
-      appendPickerChildren(children, node, depth + 1, expandPaths, pickerContext);
+      appendPickerChildren(children, node, depth + 1, expandPaths, pickerContext, { isSearching });
       details.append(children);
     }
 
@@ -3183,14 +3195,14 @@ function createFrontmatterSourceDialog() {
     return item;
   }
 
-  function createPickerPageFolderRow(node, depth, expandPaths, pickerContext) {
+  function createPickerPageFolderRow(node, depth, expandPaths, pickerContext, { isSearching = false } = {}) {
     const { pageFile } = node;
     const item = document.createElement("li");
     item.className = "tree-folder tree-page-folder frontmatter-source-folder";
     item.style.setProperty("--depth", depth);
 
     const details = document.createElement("details");
-    details.open = expandPaths.has(node.path);
+    details.open = isSearching || expandPaths.has(node.path);
 
     if (node.path === pickerContext.parentPath && !pickerContext.newPageName) {
       item.dataset.parentTarget = "true";
@@ -3224,7 +3236,7 @@ function createFrontmatterSourceDialog() {
       },
       depth + 1,
     ));
-    appendPickerChildren(children, node, depth + 1, expandPaths, pickerContext);
+    appendPickerChildren(children, node, depth + 1, expandPaths, pickerContext, { isSearching });
     details.append(children);
 
     item.append(details);
@@ -3280,13 +3292,13 @@ function createFrontmatterSourceDialog() {
     return item;
   }
 
-  function createPickerRow(node, depth, expandPaths, pickerContext) {
+  function createPickerRow(node, depth, expandPaths, pickerContext, { isSearching = false } = {}) {
     if (node.type === "folder") {
-      return createPickerFolderRow(node, depth, expandPaths, pickerContext);
+      return createPickerFolderRow(node, depth, expandPaths, pickerContext, { isSearching });
     }
 
     if (node.type === "page-folder") {
-      return createPickerPageFolderRow(node, depth, expandPaths, pickerContext);
+      return createPickerPageFolderRow(node, depth, expandPaths, pickerContext, { isSearching });
     }
 
     return createPickerFileRow(node, depth);
@@ -3307,18 +3319,31 @@ function createFrontmatterSourceDialog() {
   function renderPickerTree(parentPath, newPageName = "") {
     treeRoot.replaceChildren();
 
+    const query = searchInput.value.trim();
+    const isSearching = query.length > 0;
     const expandPaths = getPathsToExpand(parentPath);
     const pickerContext = {
       parentPath: normalizeRelativePath(parentPath),
       newPageName: newPageName.trim(),
     };
-    const markdownFiles = scannedFiles.filter((file) =>
-      ["md", "mdx"].includes(file.extension),
+    const filteredFiles = filterFiles(scannedFiles, query, scannedDirectories);
+    const directoriesForTree = getDirectoriesForFileTree(
+      filteredFiles,
+      scannedDirectories,
+      query,
     );
-    const tree = buildFileTree(markdownFiles, {
-      directories: scannedDirectories,
+    const tree = buildFileTree(filteredFiles, {
+      directories: directoriesForTree,
       scanTargets: lastScanTargets,
     });
+
+    if (filteredFiles.length === 0 && isSearching && directoriesForTree.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "frontmatter-source-empty";
+      empty.textContent = "No files match your search.";
+      treeRoot.append(empty);
+      return;
+    }
 
     if (tree.length === 0) {
       const empty = document.createElement("li");
@@ -3328,8 +3353,14 @@ function createFrontmatterSourceDialog() {
       return;
     }
 
+    if (isSearching) {
+      for (const folderPath of collectFolderPaths(tree)) {
+        expandPaths.add(folderPath);
+      }
+    }
+
     for (const node of tree) {
-      treeRoot.append(createPickerRow(node, 0, expandPaths, pickerContext));
+      treeRoot.append(createPickerRow(node, 0, expandPaths, pickerContext, { isSearching }));
     }
   }
 
@@ -3343,15 +3374,23 @@ function createFrontmatterSourceDialog() {
     }
   });
 
+  searchInput.addEventListener("input", () => {
+    renderPickerTree(pickerParentPath, pickerNewPageName);
+  });
+
   dialog.addEventListener("close", () => {
     onSelect = null;
     clearDialogError();
+    searchInput.value = "";
     treeRoot.replaceChildren();
   });
 
   function openFrontmatterSourceDialog({ parentPath, newPageName = "" }, selectHandler) {
     onSelect = selectHandler;
     clearDialogError();
+    searchInput.value = "";
+    pickerParentPath = parentPath;
+    pickerNewPageName = newPageName;
     renderPickerTree(parentPath, newPageName);
     dialog.showModal();
     requestAnimationFrame(() => {
