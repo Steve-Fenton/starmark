@@ -505,23 +505,45 @@ function getEditorCaretSnapshot() {
   return { lineIndex: lineElements.length, offset: 0 };
 }
 
-function restoreEditorCaretSnapshot(caret) {
+function restoreEditorCaretSnapshot(caret, { preventScroll = false } = {}) {
+  const focusOptions = preventScroll ? { preventScroll: true } : undefined;
   const lineElements = getEditorLineElements();
 
   if (!caret || lineElements.length === 0) {
-    markdownEditor.focus();
+    markdownEditor.focus(focusOptions);
     return;
   }
 
   const element = lineElements[Math.min(caret.lineIndex, lineElements.length - 1)];
   if (!element) {
-    markdownEditor.focus();
+    markdownEditor.focus(focusOptions);
     return;
   }
 
   const maxOffset = getEditorLineText(element).length;
   setCaretOffsetInElement(element, Math.min(caret.offset, maxOffset));
-  markdownEditor.focus();
+  markdownEditor.focus(focusOptions);
+}
+
+function saveEditorViewState() {
+  return {
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+    caret: saveEditorCaret(),
+  };
+}
+
+function restoreEditorViewState(state) {
+  if (!state) {
+    return;
+  }
+
+  restoreEditorCaretSnapshot(state.caret, { preventScroll: true });
+  window.scrollTo(state.scrollX, state.scrollY);
+
+  requestAnimationFrame(() => {
+    window.scrollTo(state.scrollX, state.scrollY);
+  });
 }
 
 function createEditorHistorySnapshot() {
@@ -3842,6 +3864,7 @@ settingsForm.addEventListener("submit", async (event) => {
 });
 
 const imageLightbox = createImageLightbox();
+let imageLightboxEditorState = null;
 
 function createImageLightbox() {
   const dialog = document.createElement("dialog");
@@ -3865,15 +3888,23 @@ function createImageLightbox() {
 
   attachDialogBackdropClose(dialog, () => dialog.close());
 
+  dialog.addEventListener("close", () => {
+    restoreEditorViewState(imageLightboxEditorState);
+    imageLightboxEditorState = null;
+  });
+
   document.body.append(dialog);
 
   return {
     open(src, alt = "") {
+      const editorState = imageLightboxEditorState ?? saveEditorViewState();
+      imageLightboxEditorState = editorState;
       image.src = resolveEditorImageUrl(src);
       image.alt = alt;
       caption.textContent = alt;
       caption.hidden = !alt;
       dialog.showModal();
+      window.scrollTo(editorState.scrollX, editorState.scrollY);
     },
   };
 }
@@ -3901,6 +3932,7 @@ markdownEditor.addEventListener("click", (event) => {
 });
 markdownEditor.addEventListener("mousedown", (event) => {
   if (event.target.closest(".editor-image-preview")) {
+    imageLightboxEditorState = saveEditorViewState();
     event.preventDefault();
   }
 });
