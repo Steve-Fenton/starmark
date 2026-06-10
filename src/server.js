@@ -5,7 +5,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { buildInitialFileContent } from "./content-config.js";
-import { listSiteTypes, resolveScanTargets } from "./site-strategy.js";
+import { listSiteTypes, resolveScanTargets, toWebPath } from "./site-strategy.js";
 import {
   readProjectSettings,
   readUserConfig,
@@ -751,33 +751,6 @@ const IMAGE_EXTENSIONS = new Set([
   ".ico",
 ]);
 
-function toWebPath(projectRelativePath, mediaRoot = "") {
-  const normalized = projectRelativePath.replace(/\\/g, "/");
-  const root = normalizeMediaDir(mediaRoot);
-
-  if (root) {
-    if (normalized === root) {
-      return "/";
-    }
-
-    const prefix = `${root}/`;
-    if (normalized.startsWith(prefix)) {
-      const relative = normalized.slice(prefix.length);
-      return relative ? `/${relative}` : "/";
-    }
-  }
-
-  if (normalized.startsWith("public/")) {
-    return `/${normalized.slice("public/".length)}`;
-  }
-
-  if (normalized.startsWith("static/")) {
-    return `/${normalized.slice("static/".length)}`;
-  }
-
-  return normalized ? `/${normalized}` : "/";
-}
-
 async function listMediaDirectory(projectPath, relativePath = "public/img") {
   const resolved = resolveProjectSubpath(projectPath, relativePath);
   if (!resolved) {
@@ -786,7 +759,6 @@ async function listMediaDirectory(projectPath, relativePath = "public/img") {
 
   const { target, relativePath: currentDir } = resolved;
   const settings = await readProjectSettings(projectPath);
-  const mediaRoot = normalizeMediaDir(settings.mediaDir);
 
   if (!(await isDirectory(target))) {
     return { error: "Folder does not exist" };
@@ -825,7 +797,7 @@ async function listMediaDirectory(projectPath, relativePath = "public/img") {
     images.push({
       name: entry.name,
       dir: currentDir,
-      webPath: toWebPath(entryRelativePath, mediaRoot),
+      webPath: toWebPath(entryRelativePath, settings.siteType),
     });
   }
 
@@ -849,7 +821,7 @@ function getMediaParentDir(currentDir) {
   return parentDir === "." ? "" : parentDir;
 }
 
-async function walkMediaSearch(dirPath, relativeDir, query, folders, images, mediaRoot = "") {
+async function walkMediaSearch(dirPath, relativeDir, query, folders, images, siteType) {
   let entries;
 
   try {
@@ -879,7 +851,7 @@ async function walkMediaSearch(dirPath, relativeDir, query, folders, images, med
         query,
         folders,
         images,
-        mediaRoot,
+        siteType,
       );
       continue;
     }
@@ -893,7 +865,7 @@ async function walkMediaSearch(dirPath, relativeDir, query, folders, images, med
       images.push({
         name: entry.name,
         dir: relativeDir,
-        webPath: toWebPath(entryRelativePath, mediaRoot),
+        webPath: toWebPath(entryRelativePath, siteType),
       });
     }
   }
@@ -907,7 +879,6 @@ async function searchMediaImages(projectPath, relativePath, query) {
 
   const { target, relativePath: currentDir } = resolved;
   const settings = await readProjectSettings(projectPath);
-  const mediaRoot = normalizeMediaDir(settings.mediaDir);
 
   if (!(await isDirectory(target))) {
     return { error: "Folder does not exist" };
@@ -926,7 +897,7 @@ async function searchMediaImages(projectPath, relativePath, query) {
     normalizedQuery,
     folders,
     images,
-    mediaRoot,
+    settings.siteType,
   );
   folders.sort((a, b) => a.name.localeCompare(b.name));
   images.sort((a, b) => a.name.localeCompare(b.name));
@@ -1130,11 +1101,12 @@ app.post(
       : uniqueFilename;
 
     try {
+      const settings = await readProjectSettings(resolvedProject);
       await fs.writeFile(filePath, req.body);
       res.json({
         name: uniqueFilename,
         dir: currentDir,
-        webPath: toWebPath(entryRelativePath),
+        webPath: toWebPath(entryRelativePath, settings.siteType),
       });
     } catch {
       res.status(500).json({ error: "Could not save image" });

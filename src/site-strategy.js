@@ -61,6 +61,18 @@ export function listSiteTypes() {
   return Object.values(SITE_STRATEGIES).map(({ id, label }) => ({ id, label }));
 }
 
+export function toWebPath(projectRelativePath, siteType = DEFAULT_SITE_TYPE) {
+  const normalized = projectRelativePath.replace(/\\/g, "/");
+  const prefix = normalizeSiteType(siteType) === "hugo" ? "static/" : "public/";
+
+  if (normalized.startsWith(prefix)) {
+    const relative = normalized.slice(prefix.length);
+    return relative ? `/${relative}` : "/";
+  }
+
+  return normalized ? `/${normalized}` : "/";
+}
+
 export async function resolveScanTargets(projectPath, siteType = DEFAULT_SITE_TYPE) {
   const strategy = getSiteStrategy(siteType);
 
