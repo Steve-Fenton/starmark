@@ -308,6 +308,31 @@ function getCaretOffsetInElement(element) {
   return preRange.toString().length;
 }
 
+function getRangeCaretPosition(range, atEnd) {
+  const container = atEnd ? range.endContainer : range.startContainer;
+  const offset = atEnd ? range.endOffset : range.startOffset;
+  const lineElements = getEditorLineElements();
+
+  for (let lineIndex = 0; lineIndex < lineElements.length; lineIndex += 1) {
+    const element = lineElements[lineIndex];
+    if (!element.contains(container) && element !== container) {
+      continue;
+    }
+
+    const preRange = range.cloneRange();
+    preRange.selectNodeContents(element);
+    try {
+      preRange.setEnd(container, offset);
+    } catch {
+      return null;
+    }
+
+    return { lineIndex, offset: preRange.toString().length };
+  }
+
+  return lineElements.length === 0 ? { lineIndex: 0, offset: 0 } : null;
+}
+
 function setCaretOffsetInElement(element, offset) {
   const selection = window.getSelection();
   const range = document.createRange();
@@ -675,6 +700,63 @@ function insertMarkdownAtCaret(markdown, caret = pendingEditorCaret) {
   flushEditorHistory();
   markdownEditor.focus();
   return true;
+}
+
+function insertPlainTextAtSelection(text) {
+  if (markdownEditor.dataset.loading || !currentEditFile) {
+    return;
+  }
+
+  normalizeEditorDom();
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!markdownEditor.contains(range.commonAncestorContainer)) {
+    return;
+  }
+
+  const start = getRangeCaretPosition(range, false);
+  const end = getRangeCaretPosition(range, true);
+  if (!start || !end) {
+    return;
+  }
+
+  const lines = getEditorLines();
+  const workingLines = lines.length > 0 ? lines : [""];
+  const [selStart, selEnd] =
+    start.lineIndex < end.lineIndex ||
+    (start.lineIndex === end.lineIndex && start.offset <= end.offset)
+      ? [start, end]
+      : [end, start];
+
+  const before = (workingLines[selStart.lineIndex] ?? "").slice(0, selStart.offset);
+  const after = (workingLines[selEnd.lineIndex] ?? "").slice(selEnd.offset);
+  const insertedLines = text.split(/\r?\n/);
+
+  const nextLines = [
+    ...workingLines.slice(0, selStart.lineIndex),
+    before,
+    ...insertedLines,
+    after,
+    ...workingLines.slice(selEnd.lineIndex + 1),
+  ];
+
+  renderMarkdownEditor(nextLines.join("\n"));
+
+  const caretLineIndex = selStart.lineIndex + insertedLines.length;
+  const lineElements = getEditorLineElements();
+  const caretElement = lineElements[caretLineIndex];
+
+  if (caretElement) {
+    setCaretOffsetInElement(caretElement, insertedLines[insertedLines.length - 1].length);
+  }
+
+  reevaluateMarkdownEditorLines();
+  scheduleEditorHistoryCommit();
+  markdownEditor.focus();
 }
 
 function applyLineDecorations(element, lineState) {
@@ -3850,7 +3932,15 @@ markdownEditor.addEventListener("beforeinput", (event) => {
   } else if (event.inputType === "historyRedo") {
     event.preventDefault();
     redoEditorChange();
+  } else if (event.inputType === "insertFromPaste") {
+    event.preventDefault();
   }
+});
+
+markdownEditor.addEventListener("paste", (event) => {
+  event.preventDefault();
+  const text = event.clipboardData?.getData("text/plain") ?? "";
+  insertPlainTextAtSelection(text);
 });
 
 markdownEditor.addEventListener("focus", () => {
