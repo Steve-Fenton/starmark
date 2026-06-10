@@ -33,6 +33,12 @@ function looksLikeEncodedHtmlTagLine(line) {
   return /&lt;\/?[A-Za-z]/.test(line);
 }
 
+const PRESERVED_HTML_TAG_RE = /^<\/?(figure|figcaption)\b/i;
+
+function isPreservedHtmlTagLine(line) {
+  return PRESERVED_HTML_TAG_RE.test(line.trim());
+}
+
 function decodeHtmlLineForEditor(line) {
   if (!looksLikeEncodedHtmlTagLine(line)) {
     return line;
@@ -42,7 +48,7 @@ function decodeHtmlLineForEditor(line) {
 }
 
 function encodeHtmlLineForSource(line) {
-  if (!looksLikeHtmlTagLine(line)) {
+  if (!looksLikeHtmlTagLine(line) || isPreservedHtmlTagLine(line)) {
     return line;
   }
 
