@@ -1,4 +1,4 @@
-import { attachDialogCloseGuard, makeGuardedAction } from "./confirm-discard.js";
+import { attachDialogBackdropClose, attachDialogCloseGuard, makeGuardedAction } from "./confirm-discard.js";
 import { icons } from "./icons.js";
 import { createFrontmatterEditor } from "./frontmatter-editor.js";
 import {
@@ -3096,11 +3096,7 @@ function createConfirmDeleteDialog() {
     dialog.close();
   });
 
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      dialog.close();
-    }
-  });
+  attachDialogBackdropClose(dialog, () => dialog.close());
 
   dialog.addEventListener("close", () => {
     pendingEntry = null;
@@ -3450,11 +3446,7 @@ function createFrontmatterSourceDialog() {
     dialog.close();
   });
 
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      dialog.close();
-    }
-  });
+  attachDialogBackdropClose(dialog, () => dialog.close());
 
   searchInput.addEventListener("input", () => {
     renderPickerTree(pickerParentPath, pickerNewPageName);
@@ -3708,11 +3700,7 @@ projectsDialogClose.addEventListener("click", () => {
   projectsDialog.close();
 });
 
-projectsDialog.addEventListener("click", (event) => {
-  if (event.target === projectsDialog) {
-    projectsDialog.close();
-  }
-});
+attachDialogBackdropClose(projectsDialog, () => projectsDialog.close());
 
 settingsMenuBtn.innerHTML = icons.settings;
 
@@ -3875,11 +3863,7 @@ function createImageLightbox() {
     dialog.close();
   });
 
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      dialog.close();
-    }
-  });
+  attachDialogBackdropClose(dialog, () => dialog.close());
 
   document.body.append(dialog);
 

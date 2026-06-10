@@ -36,11 +36,7 @@ function ensureConfirmDiscardDialog() {
   closeBtn.addEventListener("click", closeConfirmDialog);
   keepBtn.addEventListener("click", closeConfirmDialog);
 
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      closeConfirmDialog();
-    }
-  });
+  attachDialogBackdropClose(dialog, closeConfirmDialog);
 
   discardBtn.addEventListener("click", () => {
     const discard = pendingDiscard;
@@ -63,6 +59,28 @@ export function confirmDiscard(onDiscard, { message = "Your changes will be lost
   messageEl.textContent = message;
   dialog.showModal();
   keepBtn.focus();
+}
+
+export function attachDialogBackdropClose(dialog, onClose) {
+  let mouseDownOnBackdrop = false;
+  let mouseUpOnBackdrop = false;
+
+  dialog.addEventListener("mousedown", (event) => {
+    mouseDownOnBackdrop = event.target === dialog;
+  });
+
+  dialog.addEventListener("mouseup", (event) => {
+    mouseUpOnBackdrop = event.target === dialog;
+  });
+
+  dialog.addEventListener("click", () => {
+    if (mouseDownOnBackdrop && mouseUpOnBackdrop) {
+      onClose();
+    }
+
+    mouseDownOnBackdrop = false;
+    mouseUpOnBackdrop = false;
+  });
 }
 
 export function makeGuardedClose(dialog, isDirty) {
@@ -92,11 +110,7 @@ export function attachDialogCloseGuard(dialog, closeBtn, isDirty) {
 
   closeBtn.addEventListener("click", requestClose);
 
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) {
-      requestClose();
-    }
-  });
+  attachDialogBackdropClose(dialog, requestClose);
 
   dialog.addEventListener("cancel", (event) => {
     if (isDirty()) {
