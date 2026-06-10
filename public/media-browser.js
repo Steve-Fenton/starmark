@@ -176,6 +176,82 @@ export function createMediaDialog({
     return IMAGE_UPLOAD_EXTENSIONS.has(extension);
   }
 
+  function canAcceptMediaDrop(event) {
+    if (!imageForm.hidden) {
+      return false;
+    }
+
+    if (isMediaUploading) {
+      return false;
+    }
+
+    if (mediaSearchInput.value.trim()) {
+      return false;
+    }
+
+    if (!getProjectPath()) {
+      return false;
+    }
+
+    const types = event.dataTransfer?.types;
+    return Boolean(types && Array.from(types).includes("Files"));
+  }
+
+  async function postImageUpload(file) {
+    const params = new URLSearchParams({
+      project: getProjectPath(),
+      dir: currentMediaDir,
+      filename: file.name,
+    });
+    const response = await fetch(`/api/media/upload?${params.toString()}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
+    });
+    const data = await response.json();
+
+    return {
+      ok: response.ok,
+      error: data.error ?? "Could not upload image",
+    };
+  }
+
+  async function uploadImageFiles(files) {
+    const imageFiles = files.filter(isImageUploadFile);
+
+    if (imageFiles.length === 0) {
+      setMediaStatus("Only image files are supported.", { isError: true });
+      return;
+    }
+
+    if (mediaSearchInput.value.trim()) {
+      setMediaStatus("Clear the search to upload an image.", { isError: true });
+      return;
+    }
+
+    isMediaUploading = true;
+    setMediaStatus(imageFiles.length > 1 ? `Uploading ${imageFiles.length} images…` : "Uploading…");
+
+    try {
+      for (const file of imageFiles) {
+        const result = await postImageUpload(file);
+
+        if (!result.ok) {
+          setMediaStatus(result.error, { isError: true });
+          return;
+        }
+      }
+
+      await loadMediaDirectory(currentMediaDir);
+    } catch {
+      setMediaStatus("Could not upload image", { isError: true });
+    } finally {
+      isMediaUploading = false;
+    }
+  }
+
   function createMediaAddItem() {
     const label = document.createElement("label");
     label.className = "media-item-btn media-add-btn";
@@ -206,41 +282,12 @@ export function createMediaDialog({
         return;
       }
 
-      if (!isImageUploadFile(file)) {
-        setMediaStatus("Only image files are supported.", { isError: true });
-        return;
-      }
-
-      isMediaUploading = true;
       input.disabled = true;
-      setMediaStatus("Uploading…");
 
       try {
-        const params = new URLSearchParams({
-          project: getProjectPath(),
-          dir: currentMediaDir,
-          filename: file.name,
-        });
-        const response = await fetch(`/api/media/upload?${params.toString()}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": file.type || "application/octet-stream",
-          },
-          body: file,
-        });
-        const data = await response.json();
-
-        if (!response.ok) {
-          setMediaStatus(data.error ?? "Could not upload image", { isError: true });
-          return;
-        }
-
-        await loadMediaDirectory(currentMediaDir);
-      } catch {
-        setMediaStatus("Could not upload image", { isError: true });
+        await uploadImageFiles([file]);
       } finally {
-        isMediaUploading = false;
-        input.disabled = false;
+        input.disabled = isMediaUploading;
       }
     });
 
@@ -547,6 +594,7 @@ export function createMediaDialog({
   dialog.addEventListener("close", () => {
     onClose?.();
     showMediaBrowserView();
+    clearMediaDropState();
   });
 
   imageForm.addEventListener("submit", (event) => {
@@ -596,6 +644,47 @@ export function createMediaDialog({
       event.preventDefault();
       imageCaptionInput.focus();
     }
+  });
+
+  function clearMediaDropState() {
+    mediaBrowserView.classList.remove("media-browser-drag-over");
+  }
+
+  mediaBrowserView.addEventListener("dragenter", (event) => {
+    if (!canAcceptMediaDrop(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    mediaBrowserView.classList.add("media-browser-drag-over");
+  });
+
+  mediaBrowserView.addEventListener("dragover", (event) => {
+    if (!canAcceptMediaDrop(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  });
+
+  mediaBrowserView.addEventListener("dragleave", (event) => {
+    if (mediaBrowserView.contains(event.relatedTarget)) {
+      return;
+    }
+
+    clearMediaDropState();
+  });
+
+  mediaBrowserView.addEventListener("drop", async (event) => {
+    clearMediaDropState();
+
+    if (!canAcceptMediaDrop(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    await uploadImageFiles(Array.from(event.dataTransfer.files ?? []));
   });
 
   return { dialog, openMediaDialog };
