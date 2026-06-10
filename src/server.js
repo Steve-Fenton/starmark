@@ -5,7 +5,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { buildInitialFileContent } from "./content-config.js";
-import { listSiteTypes, resolveScanTargets, toWebPath } from "./site-strategy.js";
+import { getSiteStrategy, listSiteTypes } from "./site-strategy.js";
 import {
   readProjectSettings,
   readUserConfig,
@@ -231,7 +231,7 @@ async function resolveMediaFilePath(projectPath, mediaPath) {
 
 async function getScanTargetsForProject(projectPath) {
   const settings = await readProjectSettings(projectPath);
-  return resolveScanTargets(projectPath, settings.siteType);
+  return getSiteStrategy(settings.siteType).resolveScanTargets(projectPath);
 }
 
 function normalizeRelativePath(relativePath) {
@@ -759,6 +759,7 @@ async function listMediaDirectory(projectPath, relativePath = "public/img") {
 
   const { target, relativePath: currentDir } = resolved;
   const settings = await readProjectSettings(projectPath);
+  const siteStrategy = getSiteStrategy(settings.siteType);
 
   if (!(await isDirectory(target))) {
     return { error: "Folder does not exist" };
@@ -797,7 +798,7 @@ async function listMediaDirectory(projectPath, relativePath = "public/img") {
     images.push({
       name: entry.name,
       dir: currentDir,
-      webPath: toWebPath(entryRelativePath, settings.siteType),
+      webPath: siteStrategy.toWebPath(entryRelativePath),
     });
   }
 
@@ -821,7 +822,7 @@ function getMediaParentDir(currentDir) {
   return parentDir === "." ? "" : parentDir;
 }
 
-async function walkMediaSearch(dirPath, relativeDir, query, folders, images, siteType) {
+async function walkMediaSearch(dirPath, relativeDir, query, folders, images, siteStrategy) {
   let entries;
 
   try {
@@ -851,7 +852,7 @@ async function walkMediaSearch(dirPath, relativeDir, query, folders, images, sit
         query,
         folders,
         images,
-        siteType,
+        siteStrategy,
       );
       continue;
     }
@@ -865,7 +866,7 @@ async function walkMediaSearch(dirPath, relativeDir, query, folders, images, sit
       images.push({
         name: entry.name,
         dir: relativeDir,
-        webPath: toWebPath(entryRelativePath, siteType),
+        webPath: siteStrategy.toWebPath(entryRelativePath),
       });
     }
   }
@@ -879,6 +880,7 @@ async function searchMediaImages(projectPath, relativePath, query) {
 
   const { target, relativePath: currentDir } = resolved;
   const settings = await readProjectSettings(projectPath);
+  const siteStrategy = getSiteStrategy(settings.siteType);
 
   if (!(await isDirectory(target))) {
     return { error: "Folder does not exist" };
@@ -897,7 +899,7 @@ async function searchMediaImages(projectPath, relativePath, query) {
     normalizedQuery,
     folders,
     images,
-    settings.siteType,
+    siteStrategy,
   );
   folders.sort((a, b) => a.name.localeCompare(b.name));
   images.sort((a, b) => a.name.localeCompare(b.name));
@@ -1102,11 +1104,12 @@ app.post(
 
     try {
       const settings = await readProjectSettings(resolvedProject);
+      const siteStrategy = getSiteStrategy(settings.siteType);
       await fs.writeFile(filePath, req.body);
       res.json({
         name: uniqueFilename,
         dir: currentDir,
-        webPath: toWebPath(entryRelativePath, settings.siteType),
+        webPath: siteStrategy.toWebPath(entryRelativePath),
       });
     } catch {
       res.status(500).json({ error: "Could not save image" });
