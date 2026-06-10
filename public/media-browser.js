@@ -13,6 +13,23 @@ const IMAGE_UPLOAD_EXTENSIONS = new Set([
   ".ico",
 ]);
 
+/** Last browsed media folder per project (session memory for repeat insertions). */
+const rememberedMediaDirs = new Map();
+
+function getRememberedMediaDir(projectPath, fallback) {
+  if (!projectPath) {
+    return fallback;
+  }
+
+  return rememberedMediaDirs.get(projectPath) ?? fallback;
+}
+
+function rememberMediaDir(projectPath, relativeDir) {
+  if (projectPath) {
+    rememberedMediaDirs.set(projectPath, relativeDir);
+  }
+}
+
 export function createMediaDialog({
   getProjectPath,
   getInitialDir = () => "img",
@@ -538,8 +555,13 @@ export function createMediaDialog({
   async function loadMediaDirectory(relativeDir = currentMediaDir) {
     currentMediaDir = relativeDir;
     const searchQuery = mediaSearchInput.value.trim();
+    const projectPath = getProjectPath();
 
-    if (!getProjectPath()) {
+    if (!searchQuery && projectPath) {
+      rememberMediaDir(projectPath, relativeDir);
+    }
+
+    if (!projectPath) {
       setMediaStatus("Open and scan a project first.", { isError: true });
       mediaGrid.replaceChildren();
       mediaUpBtn.disabled = true;
@@ -583,7 +605,8 @@ export function createMediaDialog({
     onOpen?.();
     showMediaBrowserView();
     mediaSearchInput.value = "";
-    const initialDir = getInitialDir();
+    const projectPath = getProjectPath();
+    const initialDir = getRememberedMediaDir(projectPath, getInitialDir());
     currentMediaDir = initialDir;
     dialog.showModal();
     loadMediaDirectory(initialDir);
