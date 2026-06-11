@@ -20,23 +20,8 @@ function getCodeBlockStates(lines) {
   return states;
 }
 
-function looksLikeHtmlTagLine(line) {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("<") || !trimmed.endsWith(">")) {
-    return false;
-  }
-
-  return /^<\/?[A-Za-z]/.test(trimmed);
-}
-
 function looksLikeEncodedHtmlTagLine(line) {
   return /&lt;\/?[A-Za-z]/.test(line);
-}
-
-const PRESERVED_HTML_TAG_RE = /^<\/?(figure|figcaption)\b/i;
-
-function isPreservedHtmlTagLine(line) {
-  return PRESERVED_HTML_TAG_RE.test(line.trim());
 }
 
 function decodeHtmlLineForEditor(line) {
@@ -45,14 +30,6 @@ function decodeHtmlLineForEditor(line) {
   }
 
   return line.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
-}
-
-function encodeHtmlLineForSource(line) {
-  if (!looksLikeHtmlTagLine(line) || isPreservedHtmlTagLine(line)) {
-    return line;
-  }
-
-  return line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function transformMarkdownBody(content, transformLine) {
@@ -69,5 +46,5 @@ export function prepareMarkdownBodyForEditor(content) {
 }
 
 export function prepareMarkdownBodyForSource(content) {
-  return transformMarkdownBody(content ?? "", encodeHtmlLineForSource);
+  return content ?? "";
 }
