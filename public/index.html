@@ -120,6 +120,21 @@
             Front matter field updated automatically when page content changes. Leave blank to disable.
           </p>
         </div>
+        <div class="settings-field">
+          <label for="setting-publish-date-field">Publish date field</label>
+          <input
+            id="setting-publish-date-field"
+            name="publishDateField"
+            type="text"
+            value="pubDate"
+            placeholder="pubDate"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <p class="settings-hint">
+            Front matter field that holds the publish date. If this date is in the future, the content date field will not be updated on save. Leave blank to disable.
+          </p>
+        </div>
         <p id="settings-error" class="settings-error" hidden></p>
         <div class="link-form-actions">
           <button id="settings-save-btn" type="submit" class="primary">Save</button>

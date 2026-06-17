@@ -13,6 +13,7 @@ import {
 import {
   getContentDateField,
   getImageMode,
+  getPublishDateField,
   getSettings,
   loadSettings,
   onSettingsChange,
@@ -63,6 +64,7 @@ const settingSiteTypeSelect = document.getElementById("setting-site-type");
 const settingImagesSelect = document.getElementById("setting-images");
 const settingMediaDirInput = document.getElementById("setting-media-dir");
 const settingContentDateFieldInput = document.getElementById("setting-content-date-field");
+const settingPublishDateFieldInput = document.getElementById("setting-publish-date-field");
 const settingsProjectLabel = document.getElementById("settings-project");
 const settingsError = document.getElementById("settings-error");
 const settingsSaveBtn = document.getElementById("settings-save-btn");
@@ -2063,8 +2065,9 @@ async function saveCurrentFile() {
   let frontmatter = normalizeFrontmatter(frontmatterEditor.getValue());
 
   const contentDateField = getContentDateField();
+  const publishDateField = getPublishDateField();
   if (bodyChanged && frontmatter && contentDateField) {
-    frontmatter = updateContentDateInFrontmatter(frontmatter, contentDateField);
+    frontmatter = updateContentDateInFrontmatter(frontmatter, contentDateField, publishDateField);
     frontmatterEditor.setValue(frontmatter ?? "");
   }
 
@@ -3731,6 +3734,7 @@ function syncSettingsForm(settings) {
   settingImagesSelect.value = settings.images;
   settingMediaDirInput.value = settings.mediaDir;
   settingContentDateFieldInput.value = settings.contentDateField;
+  settingPublishDateFieldInput.value = settings.publishDateField ?? "";
 }
 
 function updateSettingsProjectContext() {
@@ -3740,6 +3744,7 @@ function updateSettingsProjectContext() {
   settingImagesSelect.disabled = !hasProject;
   settingMediaDirInput.disabled = !hasProject;
   settingContentDateFieldInput.disabled = !hasProject;
+  settingPublishDateFieldInput.disabled = !hasProject;
   settingsSaveBtn.disabled = !hasProject;
 
   if (!hasProject) {
@@ -3789,6 +3794,7 @@ function getSettingsFormValues() {
     images: settingImagesSelect.value,
     mediaDir: settingMediaDirInput.value,
     contentDateField: settingContentDateFieldInput.value,
+    publishDateField: settingPublishDateFieldInput.value,
   };
 }
 
@@ -3808,6 +3814,9 @@ function getPendingSettingsChanges() {
   }
   if (values.contentDateField !== settings.contentDateField) {
     partial.contentDateField = values.contentDateField;
+  }
+  if (values.publishDateField !== (settings.publishDateField ?? "")) {
+    partial.publishDateField = values.publishDateField;
   }
 
   return partial;

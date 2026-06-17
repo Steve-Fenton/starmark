@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS = {
   images: "accelerator",
   mediaDir: "public/img",
   contentDateField: "modDate",
+  publishDateField: "pubDate",
 };
 
 const CONTENT_DATE_FIELD_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -35,6 +36,23 @@ export function normalizeContentDateField(value) {
 
   if (!CONTENT_DATE_FIELD_PATTERN.test(trimmed)) {
     return DEFAULT_SETTINGS.contentDateField;
+  }
+
+  return trimmed;
+}
+
+export function normalizePublishDateField(value) {
+  if (value === undefined || value === null) {
+    return DEFAULT_SETTINGS.publishDateField;
+  }
+
+  const trimmed = String(value).trim();
+  if (trimmed === "") {
+    return "";
+  }
+
+  if (!CONTENT_DATE_FIELD_PATTERN.test(trimmed)) {
+    return DEFAULT_SETTINGS.publishDateField;
   }
 
   return trimmed;
@@ -128,6 +146,10 @@ export function normalizeSettings(partial = {}) {
     settings.contentDateField = normalizeContentDateField(partial.contentDateField);
   }
 
+  if (Object.prototype.hasOwnProperty.call(partial, "publishDateField")) {
+    settings.publishDateField = normalizePublishDateField(partial.publishDateField);
+  }
+
   return settings;
 }
 
@@ -159,6 +181,12 @@ function parseSettingsLines(lines = []) {
     const contentDateFieldMatch = line.match(/^contentDateField=(.*)$/i);
     if (contentDateFieldMatch) {
       settings.contentDateField = normalizeContentDateField(contentDateFieldMatch[1]);
+      continue;
+    }
+
+    const publishDateFieldMatch = line.match(/^publishDateField=(.*)$/i);
+    if (publishDateFieldMatch) {
+      settings.publishDateField = normalizePublishDateField(publishDateFieldMatch[1]);
     }
   }
 
@@ -362,6 +390,7 @@ function formatProjectIni(settings) {
     `images=${normalized.images}`,
     `mediaDir=${normalized.mediaDir}`,
     `contentDateField=${normalized.contentDateField}`,
+    `publishDateField=${normalized.publishDateField}`,
     "",
   ].join("\n");
 }

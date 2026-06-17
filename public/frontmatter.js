@@ -812,7 +812,11 @@ export function getTodayDateString() {
   ].join("-");
 }
 
-export function updateContentDateInFrontmatter(frontmatterText, fieldName = "modDate") {
+export function updateContentDateInFrontmatter(
+  frontmatterText,
+  fieldName = "modDate",
+  publishDateField = "",
+) {
   const trimmed = (frontmatterText ?? "").trim();
   if (trimmed === "" || !fieldName) {
     return trimmed === "" ? null : normalizeFrontmatter(trimmed);
@@ -830,6 +834,17 @@ export function updateContentDateInFrontmatter(frontmatterText, fieldName = "mod
   }
 
   const today = getTodayDateString();
+
+  if (publishDateField) {
+    const publishDateValue = data[publishDateField];
+    if (
+      typeof publishDateValue === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(publishDateValue) &&
+      publishDateValue >= today
+    ) {
+      return normalizeFrontmatter(trimmed);
+    }
+  }
 
   if (Object.prototype.hasOwnProperty.call(data, fieldName)) {
     data[fieldName] = today;
