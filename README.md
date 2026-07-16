@@ -25,6 +25,8 @@ You'll be given a local address for *starmark*, usually: [http://localhost:5748]
 
 Visit the URL and go edit. All the changes will be in your changes tab ready for review and commit.
 
+<img width="1515" height="1093" alt="Editing a markdown page with Starmark" src="https://github.com/user-attachments/assets/dc3a7220-da79-46a4-b3d7-3b5f1c39fa39" />
+
 ## License
 
 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/)
