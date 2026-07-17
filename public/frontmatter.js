@@ -222,6 +222,95 @@ function foldBlockScalar(contentLines) {
   return chunks.join("\n");
 }
 
+function looksLikeMappingLine(trimmed) {
+  const colonIndex = trimmed.indexOf(":");
+  if (colonIndex === -1) {
+    return false;
+  }
+
+  const key = trimmed.slice(0, colonIndex).trim();
+  if (key === "" || /^[a-z]+:\/\//i.test(trimmed)) {
+    return false;
+  }
+
+  const after = trimmed.slice(colonIndex + 1);
+  return after === "" || after.startsWith(" ");
+}
+
+function joinFoldedScalarParts(parts) {
+  let result = "";
+
+  for (const part of parts) {
+    if (part === "\n") {
+      if (result !== "" && !result.endsWith("\n")) {
+        result += "\n";
+      }
+      continue;
+    }
+
+    if (result === "" || result.endsWith("\n")) {
+      result += part;
+      continue;
+    }
+
+    result += ` ${part}`;
+  }
+
+  return result;
+}
+
+function parseFoldedScalarContinuation(lines, startIndex, baseIndent) {
+  const parts = [];
+  let index = startIndex;
+
+  while (index < lines.length) {
+    const line = lines[index];
+
+    if (isBlank(line)) {
+      let peek = index + 1;
+      while (peek < lines.length && isBlank(lines[peek])) {
+        peek += 1;
+      }
+
+      if (peek >= lines.length || countIndent(lines[peek]) <= baseIndent) {
+        break;
+      }
+
+      parts.push("\n");
+      index += 1;
+      continue;
+    }
+
+    const indent = countIndent(line);
+    if (indent <= baseIndent) {
+      break;
+    }
+
+    const trimmed = line.trim();
+    if (looksLikeMappingLine(trimmed)) {
+      throw new Error(`Unexpected indentation at line ${index + 1}`);
+    }
+
+    parts.push(stripLineIndent(line, indent).trimEnd());
+    index += 1;
+  }
+
+  return [parts, index];
+}
+
+function applyFoldedScalarContinuation(value, lines, startIndex, baseIndent) {
+  const [parts, nextIndex] = parseFoldedScalarContinuation(
+    lines,
+    startIndex,
+    baseIndent,
+  );
+  if (parts.length === 0) {
+    return [value, startIndex];
+  }
+
+  return [joinFoldedScalarParts([String(value), ...parts]), nextIndex];
+}
+
 function parseBlockScalar(lines, startIndex, baseIndent, header) {
   const [contentLines, nextIndex] = parseBlockScalarContent(
     lines,
@@ -406,6 +495,15 @@ function parseObjectBlock(lines, startIndex, baseIndent) {
       }
 
       const childIndent = countIndent(lines[index]);
+      const childTrimmed = lines[index].trim();
+      if (childTrimmed.startsWith("- ")) {
+        const listIndent = childIndent > baseIndent ? childIndent : baseIndent;
+        const [value, nextIndex] = parseArrayBlock(lines, index, listIndent);
+        result[key] = value;
+        index = nextIndex;
+        continue;
+      }
+
       if (childIndent <= baseIndent) {
         result[key] = null;
         continue;
@@ -435,7 +533,14 @@ function parseObjectBlock(lines, startIndex, baseIndent) {
       continue;
     }
 
-    result[key] = parseScalar(remainder);
+    const [scalarValue, nextIndex] = applyFoldedScalarContinuation(
+      parseScalar(remainder),
+      lines,
+      index,
+      baseIndent,
+    );
+    result[key] = scalarValue;
+    index = nextIndex;
   }
 
   return [result, index];
@@ -581,7 +686,14 @@ function parseArrayBlock(lines, startIndex, baseIndent) {
       continue;
     }
 
-    result.push(parseScalar(itemText));
+    const [scalarValue, nextIndex] = applyFoldedScalarContinuation(
+      parseScalar(itemText),
+      lines,
+      index,
+      baseIndent,
+    );
+    result.push(scalarValue);
+    index = nextIndex;
   }
 
   return [result, index];
