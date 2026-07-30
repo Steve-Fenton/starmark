@@ -1849,6 +1849,7 @@ async function applyScanData(data) {
   setProjectInUrl(data.projectPath);
   if (projectChanged) {
     loadExpandedPaths(currentProjectPath);
+    showListView();
   }
 
   scanInfo.hidden = false;

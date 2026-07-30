@@ -330,7 +330,7 @@ export function createMediaDialog({
 
     const preview = document.createElement("span");
     preview.className = "media-item-preview media-add-preview";
-    preview.innerHTML = icons.folder;
+    preview.innerHTML = icons.folderPlus;
     preview.setAttribute("aria-hidden", "true");
 
     const name = document.createElement("span");
@@ -387,14 +387,13 @@ export function createMediaDialog({
     mediaBreadcrumb.replaceChildren();
 
     const segments = currentDir ? currentDir.split("/") : [];
-    const crumbs = [{ label: "public", dir: "" }];
-
-    for (let index = 0; index < segments.length; index += 1) {
-      crumbs.push({
-        label: segments[index],
-        dir: segments.slice(0, index + 1).join("/"),
-      });
-    }
+    const crumbs =
+      segments.length > 0
+        ? segments.map((label, index) => ({
+            label,
+            dir: segments.slice(0, index + 1).join("/"),
+          }))
+        : [{ label: "public", dir: "" }];
 
     crumbs.forEach((crumb, index) => {
       if (index > 0) {
@@ -482,6 +481,10 @@ export function createMediaDialog({
     renderMediaBreadcrumb(data.currentDir);
     mediaGrid.replaceChildren();
 
+    if (!isSearching) {
+      mediaGrid.append(createMediaAddFolderItem(), createMediaAddItem());
+    }
+
     for (const folder of data.folders) {
       const displayName = isSearching
         ? getFolderSearchLabel(folder, data.currentDir)
@@ -505,10 +508,6 @@ export function createMediaDialog({
         navigateToMediaDirectory(folder.dir);
       });
       mediaGrid.append(button);
-    }
-
-    if (!isSearching) {
-      mediaGrid.append(createMediaAddFolderItem(), createMediaAddItem());
     }
 
     for (const image of data.images) {
