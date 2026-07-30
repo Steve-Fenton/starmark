@@ -79,7 +79,7 @@ let scannedDirectories = [];
 let lastScanTargets = [];
 let currentProjectPath = "";
 let expandedPaths = new Set();
-let hasStoredExpandedPaths = false;
+let wasFileSearchActive = false;
 let currentEditFile = null;
 let currentEditFrontmatter = null;
 let savedEditSnapshot = null;
@@ -1187,7 +1187,6 @@ function rememberExpandedTreePath(relativePath) {
 
 function loadExpandedPaths(projectPath) {
   expandedPaths = new Set();
-  hasStoredExpandedPaths = false;
 
   if (!projectPath) {
     return;
@@ -1196,7 +1195,6 @@ function loadExpandedPaths(projectPath) {
   try {
     const stored = localStorage.getItem(`starmark:expanded:${projectPath}`);
     if (stored !== null) {
-      hasStoredExpandedPaths = true;
       expandedPaths = new Set(JSON.parse(stored));
     }
   } catch {
@@ -1209,8 +1207,6 @@ function saveExpandedPaths() {
     return;
   }
 
-  hasStoredExpandedPaths = true;
-
   try {
     localStorage.setItem(
       `starmark:expanded:${currentProjectPath}`,
@@ -1218,18 +1214,6 @@ function saveExpandedPaths() {
     );
   } catch {
     // ignore storage failures
-  }
-}
-
-function ensureDefaultExpandedRoots(tree) {
-  if (hasStoredExpandedPaths || expandedPaths.size > 0) {
-    return;
-  }
-
-  for (const node of tree) {
-    if (node.type === "folder" || node.type === "page-folder") {
-      expandedPaths.add(node.path);
-    }
   }
 }
 
@@ -1251,7 +1235,6 @@ function collectFolderPaths(nodes, paths = []) {
 
 function collapseAllFolders() {
   expandedPaths.clear();
-  hasStoredExpandedPaths = true;
   saveExpandedPaths();
   updateFileResults();
 }
@@ -1767,6 +1750,13 @@ function updateFileResults() {
   const query = fileSearch.value.trim();
   const filteredFiles = filterFiles(scannedFiles, query, scannedDirectories);
   const isSearching = query.length > 0;
+
+  if (wasFileSearchActive && !isSearching) {
+    expandedPaths.clear();
+    saveExpandedPaths();
+  }
+  wasFileSearchActive = isSearching;
+
   const directoriesForTree = getDirectoriesForFileTree(
     filteredFiles,
     scannedDirectories,
@@ -1796,14 +1786,6 @@ function updateFileResults() {
     fileList.innerHTML = "";
     collapseAllBtn.hidden = true;
     return;
-  }
-
-  if (!isSearching) {
-    ensureDefaultExpandedRoots(tree);
-  } else {
-    for (const folderPath of collectFolderPaths(tree)) {
-      expandedPaths.add(folderPath);
-    }
   }
 
   if (filteredFiles.length === 0 && !isSearching) {
@@ -1849,6 +1831,7 @@ async function applyScanData(data) {
   setProjectInUrl(data.projectPath);
   if (projectChanged) {
     loadExpandedPaths(currentProjectPath);
+    wasFileSearchActive = false;
     showListView();
   }
 
@@ -2301,6 +2284,7 @@ function clearCurrentProject() {
   scannedDirectories = [];
   lastScanTargets = [];
   fileSearch.value = "";
+  wasFileSearchActive = false;
   searchBox.hidden = true;
   fileList.hidden = true;
   collapseAllBtn.hidden = true;
