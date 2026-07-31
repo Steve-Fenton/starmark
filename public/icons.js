@@ -27,6 +27,9 @@ export const icons = {
   image: icon(
     '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
   ),
+  maximize: icon(
+    '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="M9 21H3v-6"/><path d="m3 21 7-7"/>',
+  ),
   arrowUp: icon('<path d="m18 15-6-6-6 6"/>'),
   arrowDown: icon('<path d="m6 9 6 6 6-6"/>'),
   chevronLeft: icon('<path d="m15 18-6-6 6-6"/>'),

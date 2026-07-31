@@ -1,4 +1,9 @@
-import { attachDialogCloseGuard, makeGuardedAction, makeGuardedClose } from "./confirm-discard.js";
+import {
+  attachDialogBackdropClose,
+  attachDialogCloseGuard,
+  makeGuardedAction,
+  makeGuardedClose,
+} from "./confirm-discard.js";
 import { icons } from "./icons.js";
 
 const IMAGE_UPLOAD_ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.svg,.avif,.ico,image/*";
@@ -94,7 +99,17 @@ export function createMediaDialog({
         </div>
       </form>
     </dialog>
+    <dialog class="media-preview-dialog">
+      <button type="button" class="dialog-close media-preview-close" aria-label="Close">&times;</button>
+      <figure class="media-preview-figure">
+        <img class="media-preview-img" alt="" />
+        <figcaption class="media-preview-caption"></figcaption>
+      </figure>
+    </dialog>
     <form class="image-form" hidden aria-hidden="true">
+      <figure class="image-form-preview">
+        <img class="image-form-preview-img" alt="" />
+      </figure>
       <p class="image-selected-name"></p>
       <div class="link-field">
         <label for="${dialogId}-image-alt">Alt text</label>
@@ -125,6 +140,7 @@ export function createMediaDialog({
   const mediaGrid = dialog.querySelector(".media-grid");
   const mediaBrowserView = dialog.querySelector(".media-browser");
   const imageForm = dialog.querySelector(".image-form");
+  const imageFormPreview = dialog.querySelector(".image-form-preview-img");
   const imageSelectedName = dialog.querySelector(".image-selected-name");
   const imageAltInput = dialog.querySelector(`#${dialogId}-image-alt`);
   const imageLazyInput = dialog.querySelector(`#${dialogId}-image-lazy`);
@@ -135,6 +151,10 @@ export function createMediaDialog({
   const addFolderNameInput = dialog.querySelector(`#${dialogId}-folder-name`);
   const addFolderCloseBtn = dialog.querySelector(".media-add-folder-close");
   const addFolderCancelBtn = dialog.querySelector(".media-add-folder-cancel");
+  const mediaPreviewDialog = dialog.querySelector(".media-preview-dialog");
+  const mediaPreviewCloseBtn = dialog.querySelector(".media-preview-close");
+  const mediaPreviewImg = dialog.querySelector(".media-preview-img");
+  const mediaPreviewCaption = dialog.querySelector(".media-preview-caption");
 
   let currentMediaDir = getInitialDir();
   let isMediaUploading = false;
@@ -438,6 +458,8 @@ export function createMediaDialog({
   function showMediaBrowserView() {
     pendingImage = null;
     imageFormSnapshot = null;
+    imageFormPreview.removeAttribute("src");
+    imageFormPreview.alt = "";
     mediaBrowserView.hidden = false;
     mediaBrowserView.setAttribute("aria-hidden", "false");
     imageForm.hidden = true;
@@ -445,7 +467,10 @@ export function createMediaDialog({
   }
 
   function showMediaDetailsView(image) {
+    const projectRelativePath = image.dir ? `${image.dir}/${image.name}` : image.name;
     pendingImage = image;
+    imageFormPreview.src = getMediaFileUrl(projectRelativePath);
+    imageFormPreview.alt = image.name;
     imageSelectedName.textContent = image.name;
     imageAltInput.value = filenameToAlt(image.name);
     imageLazyInput.checked = true;
@@ -458,6 +483,18 @@ export function createMediaDialog({
     imageAltInput.focus();
   }
 
+  function openMediaPreview(image) {
+    const projectRelativePath = image.dir ? `${image.dir}/${image.name}` : image.name;
+    mediaPreviewImg.src = getMediaFileUrl(projectRelativePath);
+    mediaPreviewImg.alt = image.name;
+    mediaPreviewCaption.textContent = image.name;
+    mediaPreviewDialog.showModal();
+  }
+
+  function closeMediaPreview() {
+    mediaPreviewDialog.close();
+  }
+
   function handleImageSelection(image) {
     if (selectMode === "path") {
       onSelect?.(image);
@@ -466,6 +503,47 @@ export function createMediaDialog({
     }
 
     showMediaDetailsView(image);
+  }
+
+  function createMediaImageItem(image, displayName) {
+    const item = document.createElement("div");
+    item.className = "media-image-item";
+
+    const projectRelativePath = image.dir ? `${image.dir}/${image.name}` : image.name;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "media-item-btn media-image-btn";
+    button.title = displayName;
+
+    const preview = document.createElement("img");
+    preview.className = "media-item-preview media-image-preview";
+    preview.src = getMediaFileUrl(projectRelativePath);
+    preview.alt = "";
+    preview.loading = "lazy";
+
+    const label = document.createElement("span");
+    label.className = "media-item-name";
+    label.textContent = displayName;
+
+    button.append(preview, label);
+    button.addEventListener("click", () => {
+      handleImageSelection(image);
+    });
+
+    const expandBtn = document.createElement("button");
+    expandBtn.type = "button";
+    expandBtn.className = "media-expand-btn";
+    expandBtn.setAttribute("aria-label", `View larger: ${displayName}`);
+    expandBtn.title = "View larger";
+    expandBtn.innerHTML = icons.maximize;
+    expandBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openMediaPreview(image);
+    });
+
+    item.append(button, expandBtn);
+    return item;
   }
 
   function renderMediaDirectory(data) {
@@ -511,31 +589,10 @@ export function createMediaDialog({
     }
 
     for (const image of data.images) {
-      const projectRelativePath = image.dir ? `${image.dir}/${image.name}` : image.name;
       const displayName = isSearching
         ? getImageSearchLabel(image, data.currentDir)
         : image.name;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "media-item-btn media-image-btn";
-      button.title = displayName;
-
-      const preview = document.createElement("img");
-      preview.className = "media-item-preview media-image-preview";
-      preview.src = getMediaFileUrl(projectRelativePath);
-      preview.alt = "";
-      preview.loading = "lazy";
-
-      const label = document.createElement("span");
-      label.className = "media-item-name";
-      label.textContent = displayName;
-
-      button.append(preview, label);
-      button.addEventListener("click", () => {
-        handleImageSelection(image);
-      });
-
-      mediaGrid.append(button);
+      mediaGrid.append(createMediaImageItem(image, displayName));
     }
 
     if (data.folders.length === 0 && data.images.length === 0) {
@@ -644,6 +701,14 @@ export function createMediaDialog({
 
   attachDialogCloseGuard(addFolderDialog, addFolderCloseBtn, isAddFolderDirty);
   addFolderCancelBtn.addEventListener("click", makeGuardedClose(addFolderDialog, isAddFolderDirty));
+
+  mediaPreviewCloseBtn.addEventListener("click", closeMediaPreview);
+  attachDialogBackdropClose(mediaPreviewDialog, closeMediaPreview);
+  mediaPreviewDialog.addEventListener("close", () => {
+    mediaPreviewImg.removeAttribute("src");
+    mediaPreviewImg.alt = "";
+    mediaPreviewCaption.textContent = "";
+  });
 
   addFolderForm.addEventListener("submit", async (event) => {
     event.preventDefault();
