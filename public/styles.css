@@ -1431,8 +1431,12 @@ details[open] > .tree-folder-header .tree-folder-chevron {
 }
 
 .image-lightbox {
-  position: relative;
+  /* Fixed + inset keeps the preview in the current viewport after scroll restore */
+  position: fixed;
+  inset: 0;
+  margin: auto;
   width: min(920px, calc(100vw - 2rem));
+  height: fit-content;
   max-height: calc(100vh - 2rem);
   padding: 0;
   border: 1px solid var(--border);
