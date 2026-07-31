@@ -1811,6 +1811,10 @@ button.destructive:hover:not(:disabled) {
   background: rgb(0 0 0 / 55%);
 }
 
+html:has(.media-dialog[open]:modal) {
+  overflow: hidden;
+}
+
 .media-browser {
   position: relative;
   margin: 0.75rem 1.25rem 1.25rem;
